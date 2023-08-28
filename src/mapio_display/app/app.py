@@ -1,81 +1,232 @@
 import datetime
+import logging
+import os
+import threading
+import time
+from collections import deque
 from pathlib import Path
+from typing import Any
 
+import netifaces  # type: ignore
 import netifaces as ni  # type: ignore
+from gpiod import chip, line_request
 from netifaces import AF_INET  # type: ignore
 from PIL import Image, ImageDraw, ImageFont  # type: ignore
 
 from mapio_display.epd.epd import EPD
 
+SCREEN_REFRESH_PERIOD_S = 20
 
-def print_current_time(image: Image) -> None:
-    """Add current time format HH::MM on current image
+
+class MAPIO_CTRL(object):
+    def __init__(self) -> None:
+        self.logger = logging.getLogger(__name__)
+
+        # ePaper control
+        self.epd = EPD()
+        self.views_list = ["HOME", "SYSTEM"]
+        self.views_pool = deque(self.views_list)
+        self.need_refresh = False
+        self.current_view = self.views_pool[0]
+
+        # Init ePaper
+        self.epd.init()
+        time.sleep(0.5)
+        self.epd.displayPartBaseImage(self.get_current_buffered_image())
+
+    # ePaper methods
+    def get_current_buffered_image(self, wait: bool = False) -> Image:
+        """Get current image as buffered
+
+        Args:
+            wait (bool, optional): Indicates if wait message is printed. Defaults to False.
+
+        Returns:
+            Image: The buffered image
+        """
+        if self.current_view == "HOME":
+            self.logger.info("HOME VIEW")
+            image = self._generate_home_view(wait)
+        elif self.current_view == "SYSTEM":
+            image = self._generate_system_view(wait)
+
+        return self.epd.getbuffer(image)
+
+    def _generate_home_view(self, wait: bool) -> Image:
+        """Generate the home view as an image
+
+        Args:
+            wait (bool): Indicates if wait message is printed
+
+        Returns:
+            Image: The home image
+        """
+        # Add logo
+        img = Image.open(f"{Path(__file__).parent}/../images/mapio_logo_bw104x122.jpg")
+        image = Image.new(
+            "1", (self.epd.height, self.epd.width), 255
+        )  # 255: clear the frame
+        image.paste(img, (2, 2))
+
+        # Add hour
+        draw = ImageDraw.Draw(image)
+        font = ImageFont.truetype("/usr/share/fonts/ttf/LiberationMono-Bold.ttf", 40)
+        clock = datetime.datetime.now().strftime("%H:%M")
+        draw.text((120, 2), clock, 0, font=font)
+
+        # Wait rectangle
+        draw.rectangle((190, 92, 245, 117), fill=255, outline="black")
+        if wait:
+            fontwait = ImageFont.truetype(
+                "/usr/share/fonts/ttf/LiberationMono-Bold.ttf", 12
+            )
+            draw.text((194, 96), "Wait...", font=fontwait, fill=0)
+
+        # Add version
+        try:
+            image_editable = ImageDraw.Draw(image)
+            font = ImageFont.truetype(
+                "/usr/share/fonts/ttf/LiberationMono-Bold.ttf", 12
+            )
+            os_version = Path("/etc/os-version").read_text()
+        except AssertionError:
+            os_version = "None"
+        image_editable.text((120, 90), "MAPIO OS: ", 0, font=font)
+        image_editable.text((120, 105), os_version, 0, font=font)
+
+        # Add IP address
+        try:
+            image_editable = ImageDraw.Draw(image)
+            font = ImageFont.truetype(
+                "/usr/share/fonts/ttf/LiberationMono-Bold.ttf", 12
+            )
+            def_gw_device = netifaces.gateways()["default"][netifaces.AF_INET][1]
+            ip_addr = ni.ifaddresses(def_gw_device)[AF_INET][0]["addr"]
+        except:  # noqa: E722
+            ip_addr = "NO IP"
+        image_editable.text((120, 70), ip_addr, 0, font=font)
+
+        return image
+
+    def _generate_system_view(self, wait: bool) -> Image:
+        """Generate the system view as an image
+
+        Args:
+            wait (bool): Indicates if wait message is printed
+
+        Returns:
+            Image: The system image
+        """
+        font = ImageFont.truetype("/usr/share/fonts/ttf/LiberationMono-Bold.ttf", 20)
+        image = Image.new("1", (self.epd.height, self.epd.width), 255)
+        draw = ImageDraw.Draw(image)
+        draw.text((0, 0), "System ", font=font, fill=0)
+
+        draw.rectangle((190, 92, 245, 117), fill=255, outline="black")
+        if wait:
+            fontwait = ImageFont.truetype(
+                "/usr/share/fonts/ttf/LiberationMono-Bold.ttf", 12
+            )
+            draw.text((194, 96), "Wait...", font=fontwait, fill=0)
+        return image
+
+
+# Create MAPIO control object
+mapio_ctrl = MAPIO_CTRL()
+
+
+def set_logger_for_tasks(logger: logging.Logger) -> None:
+    """Set the logger used by MAPIO control object
 
     Args:
-        image (Image): Current base image
+        logger (logging.Logger): Logger object
     """
-    image_editable = ImageDraw.Draw(image)
-    font = ImageFont.truetype("/usr/share/fonts/ttf/LiberationMono-Bold.ttf", 40)
-    clock = datetime.datetime.now().strftime("%H:%M")
-    image_editable.text((124, 2), clock, 0, font=font)
+    mapio_ctrl.logger = logger
 
 
-def print_os_version(image: Image) -> None:
-    """Add current time format HH::MM on current image
+def refresh_screen_task() -> None:
+    """Task that refresh the epaper screen"""
+    next_refresh_time = round(time.time())
+    force_refresh = False
+    mapio_ctrl.logger.info("Start refresh screen task")
+
+    while True:
+        if (next_refresh_time + SCREEN_REFRESH_PERIOD_S < round(time.time())) or (
+            force_refresh is True
+        ):
+            next_refresh_time = round(time.time())
+            force_refresh = False
+            mapio_ctrl.logger.info("Refresh the screen")
+            mapio_ctrl.epd.init()
+            mapio_ctrl.epd.display(mapio_ctrl.get_current_buffered_image())
+
+        elif mapio_ctrl.need_refresh:
+            mapio_ctrl.logger.info("Short refresh of  the screen")
+            mapio_ctrl.need_refresh = False
+            force_refresh = True
+            mapio_ctrl.epd.display_partial(
+                mapio_ctrl.get_current_buffered_image(wait=True)
+            )
+            # Update view for next refresh
+            mapio_ctrl.current_view = mapio_ctrl.views_pool[0]
+
+        time.sleep(0.5)
+
+
+def _gpio_chip_handler(buttons: Any) -> None:
+    """Handler for GPIO buttons interrupts
 
     Args:
-        image (Image): Current base image
+        buttons (List): List of GPIO that trigs the interrupt
     """
-    try:
-        image_editable = ImageDraw.Draw(image)
-        font = ImageFont.truetype("/usr/share/fonts/ttf/LiberationMono-Bold.ttf", 12)
-        version = Path("/etc/os-version").read_text()
-        os_version = f"MAPIO OS : {version}"
-    except AssertionError:
-        os_version = "MAPIO OS : None"
-    image_editable.text((124, 90), os_version, 0, font=font)
+    while True:
+        lines = buttons.event_wait(datetime.timedelta(seconds=10))
+        if not lines.empty:
+            for it in lines:
+                event = it.event_read()
+                mapio_ctrl.logger.info(f"Event: {event}")
+                mapio_ctrl.logger.info(it.consumer)
+                if it.consumer == "UP":
+                    mapio_ctrl.need_refresh = True
+                    mapio_ctrl.views_pool.rotate(-1)
+                    mapio_ctrl.logger.info(f"next view is: {mapio_ctrl.views_pool[0]}")
+                elif it.consumer == "DOWN":
+                    mapio_ctrl.need_refresh = True
+                    mapio_ctrl.views_pool.rotate(1)
+                    mapio_ctrl.logger.info(f"next view is: {mapio_ctrl.views_pool[0]}")
+                elif it.consumer == "MID":
+                    mapio_ctrl.logger.info("MID has been pushed")
+                else:
+                    mapio_ctrl.logger.error("Unknown button")
+        time.sleep(1)
 
 
-def print_ip_address(image: Image) -> None:
-    """Add current time format HH::MM on current image
+def gpio_mon_create_task() -> None:
+    """Task that manages the GPIO buttons"""
+    mapio_ctrl.logger.info("Create GPIOs task")
+    # Button mid on chip 0
+    config = line_request()
+    config.request_type = line_request.EVENT_FALLING_EDGE
+    chip0 = chip(0)
+    BUTTON_MID_LINE_OFFSETS = [18]
+    buttons_mid = chip0.get_lines(BUTTON_MID_LINE_OFFSETS)
+    for i in range(buttons_mid.size):
+        config.consumer = "MID"
+        buttons_mid[i].request(config)
+    event = threading.Thread(target=_gpio_chip_handler, args=(buttons_mid,))
+    event.start()
 
-    Args:
-        image (Image): Current base image
-    """
-    try:
-        image_editable = ImageDraw.Draw(image)
-        font = ImageFont.truetype("/usr/share/fonts/ttf/LiberationMono-Bold.ttf", 12)
-        ip_addr = ni.ifaddresses("eth0")[AF_INET][0]["addr"]
-    except AssertionError:
-        ip_addr = "NO IP"
-    image_editable.text((124, 70), ip_addr, 0, font=font)
-
-
-def base_image_with_logo(epd: EPD) -> Image:
-    """Create a base image with the MAPIO logo
-
-    Args:
-        epd (EPD): Epaper object
-
-    Returns:
-        Image: The generated base image
-    """
-    img = Image.open(f"{Path(__file__).parent}/../images/mapio_logo_bw104x122.jpg")
-    image = Image.new("1", (epd.height, epd.width), 255)  # 255: clear the frame
-    image.paste(img, (2, 2))
-    return image
-
-
-def mapio_refresh_main_screen(epd: EPD) -> None:
-    """Refresh the data on mapio main screen
-
-    Args:
-        epd (EPD): Epaper object
-    """
-    epd.init()
-    image = base_image_with_logo(epd)
-    print_current_time(image)
-    print_os_version(image)
-    print_ip_address(image)
-    epd.display(epd.getbuffer(image))
-    epd.enter_deep_sleep()
+    # Button up and down on chip 1
+    config = line_request()
+    config.request_type = line_request.EVENT_FALLING_EDGE
+    chip1 = chip(1)
+    BUTTON_UP_DOWN_LINE_OFFSETS = [0, 1]
+    buttons_up_down = chip1.get_lines(BUTTON_UP_DOWN_LINE_OFFSETS)
+    for i in range(buttons_up_down.size):
+        if i == 0:
+            config.consumer = "DOWN"
+        else:
+            config.consumer = "UP"
+        buttons_up_down[i].request(config)
+    event = threading.Thread(target=_gpio_chip_handler, args=(buttons_up_down,))
+    event.start()

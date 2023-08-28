@@ -36,6 +36,20 @@ class EPD:
         self.height = EPD_HEIGHT
         self.spi = spidev.SpiDev()
         self.spi.open(0, 0)
+        self.spi.max_speed_hz = 4000000
+
+        chip = gpiod.chip(1)
+        config = gpiod.line_request()
+        config.request_type = gpiod.line_request.DIRECTION_OUTPUT
+
+        self.reset_gpio = chip.get_line(RST_PIN)
+        self.dc_gpio = chip.get_line(DC_PIN)
+        self.reset_gpio.request(config)
+        self.dc_gpio.request(config)
+
+        config.request_type = gpiod.line_request.DIRECTION_INPUT
+        self.busy_gpio = chip.get_line(BUSY_PIN)
+        self.busy_gpio.request(config)
 
     lut_partial_update = [
         0x0,
@@ -367,7 +381,7 @@ class EPD:
         Args:
             data (Any): Data to send on SPI
         """
-        self.spi.writebytes(data)
+        self.spi.writebytes2(data)
 
     def reset(self) -> None:
         """Reset EPD"""
@@ -391,10 +405,20 @@ class EPD:
         """Send data on EPD
 
         Args:
-            command (Any): Send data on EPD (see EPD datasheet for more details)
+            data (Any): Send data on EPD (see EPD datasheet for more details)
         """
         self.dc_gpio.set_value(1)
         self.spi_transfer([data])
+
+    # send a lot of data
+    def send_data2(self, data: Any) -> None:
+        """Send data on EPD
+
+        Args:
+            data (Any): Send a raw data on EPD (see EPD datasheet for more details)
+        """
+        self.dc_gpio.set_value(1)
+        self.spi_transfer(data)
 
     def wait_busy(self) -> None:
         """Wait EPD ready state"""
@@ -483,19 +507,6 @@ class EPD:
 
     def init(self) -> None:
         """Initialize the e-Paper register"""
-        chip = gpiod.chip(0)
-        config = gpiod.line_request()
-        config.request_type = gpiod.line_request.DIRECTION_OUTPUT
-
-        self.reset_gpio = chip.get_line(RST_PIN)
-        self.dc_gpio = chip.get_line(DC_PIN)
-        self.reset_gpio.request(config)
-        self.dc_gpio.request(config)
-
-        config.request_type = gpiod.line_request.DIRECTION_INPUT
-        self.busy_gpio = chip.get_line(BUSY_PIN)
-        self.busy_gpio.request(config)
-
         # EPD hardware init start
         self.reset()
 
@@ -539,7 +550,7 @@ class EPD:
         """
         img = image
         imwidth, imheight = img.size
-        self.logger.info(f"imwidth {imwidth}, imheight {imheight}")
+        self.logger.debug(f"imwidth {imwidth}, imheight {imheight}")
         if imwidth == self.width and imheight == self.height:
             img = img.convert("1")
         elif imwidth == self.height and imheight == self.width:
@@ -564,15 +575,9 @@ class EPD:
         Args:
             image (bytearray): Data to send to screen
         """
-        if self.width % 8 == 0:
-            linewidth = int(self.width / 8)
-        else:
-            linewidth = int(self.width / 8) + 1
 
         self.send_command(0x24)
-        for j in range(0, self.height):
-            for i in range(0, linewidth):
-                self.send_data(image[i + j * linewidth])
+        self.send_data2(image)
         self.turn_on_display()
 
     def display_partial(self, image: bytearray) -> None:
@@ -581,11 +586,6 @@ class EPD:
         Args:
             image (bytearray): Data to send to screen
         """
-        if self.width % 8 == 0:
-            linewidth = int(self.width / 8)
-        else:
-            linewidth = int(self.width / 8) + 1
-
         self.reset_gpio.set_value(0)
         epd_delay_ms(1)
         self.reset_gpio.set_value(1)
@@ -615,9 +615,7 @@ class EPD:
         self.SetCursor(0, 0)
 
         self.send_command(0x24)  # WRITE_RAM
-        for j in range(0, self.height):
-            for i in range(0, linewidth):
-                self.send_data(image[i + j * linewidth])
+        self.send_data2(image)
         self.turn_on_display_part()
 
     def displayPartBaseImage(self, image: bytearray) -> None:
@@ -626,20 +624,11 @@ class EPD:
         Args:
             image (bytearray): the raw image to send
         """
-        if self.width % 8 == 0:
-            linewidth = int(self.width / 8)
-        else:
-            linewidth = int(self.width / 8) + 1
-
         self.send_command(0x24)
-        for j in range(0, self.height):
-            for i in range(0, linewidth):
-                self.send_data(image[i + j * linewidth])
+        self.send_data2(image)
 
         self.send_command(0x26)
-        for j in range(0, self.height):
-            for i in range(0, linewidth):
-                self.send_data(image[i + j * linewidth])
+        self.send_data2(image)
         self.turn_on_display()
 
     def clear(self, color: int) -> None:
@@ -654,10 +643,7 @@ class EPD:
             linewidth = int(self.width / 8) + 1
 
         self.send_command(0x24)
-        for j in range(0, self.height):
-            for i in range(0, linewidth):
-                self.send_data(color)
-
+        self.send_data2([color] * int(self.height * linewidth))
         self.turn_on_display()
 
     def enter_deep_sleep(self) -> None:
