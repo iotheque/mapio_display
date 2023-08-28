@@ -14,6 +14,7 @@ from netifaces import AF_INET  # type: ignore
 from PIL import Image, ImageDraw, ImageFont  # type: ignore
 
 from mapio_display.epd.epd import EPD
+from mapio_display.leds.leds import LED
 
 SCREEN_REFRESH_PERIOD_S = 20
 
@@ -33,6 +34,10 @@ class MAPIO_CTRL(object):
         self.epd.init()
         time.sleep(0.5)
         self.epd.displayPartBaseImage(self.get_current_buffered_image())
+
+        # Leds control
+        self.led_sys_green = LED(1, "G")
+        self.led_sys_red = LED(1, "R")
 
     # ePaper methods
     def get_current_buffered_image(self, wait: bool = False) -> Image:
@@ -171,6 +176,23 @@ def refresh_screen_task() -> None:
             mapio_ctrl.current_view = mapio_ctrl.views_pool[0]
 
         time.sleep(0.5)
+
+
+def refresh_leds_task() -> None:
+    """Task that refresh the leds"""
+    logger = logging.getLogger(__name__)
+    logger.info("Start refresh leds task")
+    while True:
+        # Check if docker service is running
+        if os.system("systemctl is-active --quiet docker.service") == 0:  # nosec
+            # led_sys_green.on()
+            mapio_ctrl.led_sys_green.blink(500, 50)
+            mapio_ctrl.led_sys_red.off()
+        else:
+            mapio_ctrl.led_sys_green.off()
+            mapio_ctrl.led_sys_red.on()
+    
+        time.sleep(1)
 
 
 def _gpio_chip_handler(buttons: Any) -> None:

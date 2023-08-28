@@ -14,6 +14,7 @@ import click  # type: ignore
 
 from mapio_display.app.app import (
     gpio_mon_create_task,
+    refresh_leds_task,
     refresh_screen_task,
     set_logger_for_tasks,
 )
@@ -64,6 +65,8 @@ def app() -> None:
     event = threading.Thread(target=refresh_screen_task)
     event.start()
 
+    event = threading.Thread(target=refresh_leds_task)
+    event.start()
 
     gpio_mon_create_task()
 
