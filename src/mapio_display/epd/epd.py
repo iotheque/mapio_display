@@ -13,9 +13,9 @@ EPD_WIDTH = 122
 EPD_HEIGHT = 250
 
 # Pin definition
-RST_PIN = 2
-DC_PIN = 3
-BUSY_PIN = 26
+RST_PIN = 13
+DC_PIN = 14
+BUSY_PIN = 12
 
 
 def epd_delay_ms(delaytime: int) -> None:
