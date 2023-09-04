@@ -9,6 +9,7 @@ from typing import Any
 
 import netifaces  # type: ignore
 import netifaces as ni  # type: ignore
+import psutil  # type: ignore
 from gpiod import chip, line_request
 from netifaces import AF_INET  # type: ignore
 from PIL import Image, ImageDraw, ImageFont  # type: ignore
@@ -122,10 +123,39 @@ class MAPIO_CTRL(object):
         Returns:
             Image: The system image
         """
-        font = ImageFont.truetype("/usr/share/fonts/ttf/LiberationMono-Bold.ttf", 20)
+        font = ImageFont.truetype("/usr/share/fonts/ttf/LiberationMono-Bold.ttf", 28)
         image = Image.new("1", (self.epd.height, self.epd.width), 255)
         draw = ImageDraw.Draw(image)
         draw.text((0, 0), "System ", font=font, fill=0)
+
+        font = ImageFont.truetype("/usr/share/fonts/ttf/LiberationMono-Bold.ttf", 15)
+        draw.text((0, 30), f"•CPU: {psutil.cpu_percent()}%", font=font, fill=0)
+        draw.text(
+            (120, 30), f"•RAM: {psutil.virtual_memory().percent}%", font=font, fill=0
+        )
+
+        draw.text(
+            (0, 50),
+            f"•eMMC: {psutil.disk_usage('/usr/local').percent}%",
+            font=font,
+            fill=0,
+        )
+        uptime = os.popen(  # nosec
+            "uptime | awk -F ',' '{print $1}' | cut -c14-"  # nosec
+        ).read()  # nosec
+        draw.text((120, 50), f"•Uptime: {uptime}", font=font, fill=0)
+
+        battery_volt = os.popen("vcgencmd pmicrd 1d | awk '{print $3}'").read()  # nosec
+        battery_volt_int = round(4 * int(battery_volt, 16) / 100) / 2
+
+        draw.text((0, 70), f"•Battery: {battery_volt_int}V", font=font, fill=0)
+
+        draw.text(
+            (0, 90),
+            f"•Temperature: {round(psutil.sensors_temperatures()['cpu_thermal'][0].current)}°C",
+            font=font,
+            fill=0,
+        )
 
         draw.rectangle((190, 92, 245, 117), fill=255, outline="black")
         if wait:
