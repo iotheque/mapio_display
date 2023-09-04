@@ -51,330 +51,6 @@ class EPD:
         self.busy_gpio = chip.get_line(BUSY_PIN)
         self.busy_gpio.request(config)
 
-    lut_partial_update = [
-        0x0,
-        0x40,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x80,
-        0x80,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x40,
-        0x40,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x80,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x14,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x1,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x1,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x22,
-        0x22,
-        0x22,
-        0x22,
-        0x22,
-        0x22,
-        0x0,
-        0x0,
-        0x0,
-        0x22,
-        0x17,
-        0x41,
-        0x00,
-        0x32,
-        0x36,
-    ]
-
-    lut_full_update = [
-        0x80,
-        0x4A,
-        0x40,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x40,
-        0x4A,
-        0x80,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x80,
-        0x4A,
-        0x40,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x40,
-        0x4A,
-        0x80,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0xF,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0xF,
-        0x0,
-        0x0,
-        0xF,
-        0x0,
-        0x0,
-        0x2,
-        0xF,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x1,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x22,
-        0x22,
-        0x22,
-        0x22,
-        0x22,
-        0x22,
-        0x0,
-        0x0,
-        0x0,
-        0x22,
-        0x17,
-        0x41,
-        0x0,
-        0x32,
-        0x36,
-    ]
-
     def spi_transfer(self, data: Any) -> None:
         """Write bytes on SPI bus
 
@@ -430,45 +106,16 @@ class EPD:
     def turn_on_display(self) -> None:
         """Turn ON EPD"""
         self.send_command(0x22)  # Display Update Control
-        self.send_data(0xC7)
+        self.send_data(0xF7)
         self.send_command(0x20)  # Activate Display Update Sequence
         self.wait_busy()
 
     def turn_on_display_part(self) -> None:
         """Turn ON EPD"""
         self.send_command(0x22)  # Display Update Control
-        self.send_data(0x0F)  # fast:0x0c, quality:0x0f, 0xcf
+        self.send_data(0xFF)  # fast:0x0c, quality:0x0f, 0xcf
         self.send_command(0x20)  # Activate Display Update Sequence
         self.wait_busy()
-
-    def Lut(self, lut: Any) -> None:
-        """Send lut data and configuration
-
-        Args:
-            lut (Any): lut data
-        """
-        self.send_command(0x32)
-        for i in range(0, 153):
-            self.send_data(lut[i])
-        self.wait_busy()
-
-    def set_lut(self, lut: Any) -> None:
-        """Send lut data and configuration
-
-        Args:
-            lut (Any): lut data
-        """
-        self.Lut(lut)
-        self.send_command(0x3F)
-        self.send_data(lut[153])
-        self.send_command(0x03)  # gate voltage
-        self.send_data(lut[154])
-        self.send_command(0x04)  # source voltage
-        self.send_data(lut[155])  # VSH
-        self.send_data(lut[156])  # VSH2
-        self.send_data(lut[157])  # VSL
-        self.send_command(0x2C)  # VCOM
-        self.send_data(lut[158])
 
     def set_window(self, x_start: int, y_start: int, x_end: int, y_end: int) -> None:
         """Setting the display window
@@ -537,8 +184,6 @@ class EPD:
 
         self.wait_busy()
 
-        self.set_lut(self.lut_full_update)
-
     def getbuffer(self, image: Image) -> Any:
         """Generate a buffer based on an Image
 
@@ -590,26 +235,16 @@ class EPD:
         epd_delay_ms(1)
         self.reset_gpio.set_value(1)
 
-        self.set_lut(self.lut_partial_update)
-        self.send_command(0x37)
-        self.send_data(0x00)
-        self.send_data(0x00)
-        self.send_data(0x00)
-        self.send_data(0x00)
-        self.send_data(0x00)
-        self.send_data(0x40)
-        self.send_data(0x00)
-        self.send_data(0x00)
-        self.send_data(0x00)
-        self.send_data(0x00)
-
         self.send_command(0x3C)  # BorderWavefrom
         self.send_data(0x80)
 
-        self.send_command(0x22)
-        self.send_data(0xC0)
-        self.send_command(0x20)
-        self.wait_busy()
+        self.send_command(0x01)  # Driver output control
+        self.send_data(0xF9)
+        self.send_data(0x00)
+        self.send_data(0x00)
+
+        self.send_command(0x11)  # data entry mode
+        self.send_data(0x03)
 
         self.set_window(0, 0, self.width - 1, self.height - 1)
         self.SetCursor(0, 0)
