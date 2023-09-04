@@ -8,6 +8,7 @@ from collections import deque
 from pathlib import Path
 from typing import Any
 
+import gpiod
 import netifaces  # type: ignore
 import netifaces as ni  # type: ignore
 import psutil  # type: ignore
@@ -40,6 +41,29 @@ class MAPIO_CTRL(object):
         # Leds control
         self.led_sys_green = LED(1, "G")
         self.led_sys_red = LED(1, "R")
+        self.led_chg_green = LED(3, "G")
+        self.led_chg_red = LED(3, "R")
+        self.all_leds = [
+            self.led_sys_green,
+            self.led_sys_red,
+            self.led_chg_green,
+            self.led_chg_red,
+        ]
+        for led in self.all_leds:
+            led.off()
+            led.logger = self.logger
+
+        # GPIOs for charger control
+        chip = gpiod.chip(1)
+        config = gpiod.line_request()
+        config.request_type = gpiod.line_request.DIRECTION_INPUT
+        config.flags = gpiod.line_request.FLAG_BIAS_PULL_UP
+        self.chg_chg_n = chip.get_line(8)
+        self.chg_chg_n.request(config)
+        self.chg_acok_n = chip.get_line(9)
+        self.chg_acok_n.request(config)
+        self.chg_boost_n = chip.get_line(10)
+        self.chg_boost_n.request(config)
 
     # ePaper methods
     def get_current_buffered_image(self, wait: bool = False) -> Image:
@@ -262,18 +286,56 @@ def refresh_screen_task() -> None:
 
 def refresh_leds_task() -> None:
     """Task that refresh the leds"""
-    logger = logging.getLogger(__name__)
-    logger.info("Start refresh leds task")
+    mapio_ctrl.logger.info("Start refresh leds task")
+    need_synchro = False
     while True:
+        # LED1 management
         # Check if docker service is running
         if os.system("systemctl is-active --quiet docker.service") == 0:  # nosec
-            # led_sys_green.on()
-            mapio_ctrl.led_sys_green.blink(500, 50)
+            if mapio_ctrl.led_sys_green.blink():
+                need_synchro = True
             mapio_ctrl.led_sys_red.off()
         else:
-            mapio_ctrl.led_sys_green.off()
-            mapio_ctrl.led_sys_red.on()
-    
+            if mapio_ctrl.led_sys_green.blink():
+                need_synchro = True
+            if mapio_ctrl.led_sys_red.blink():
+                need_synchro = True
+
+        # LED3 management
+        if mapio_ctrl.chg_chg_n.get_value() == 0:
+            battery_volt = os.popen(  # nosec
+                "vcgencmd pmicrd 1d | awk '{print $3}'"  # nosec
+            ).read()  # nosec
+            battery_volt_int = round(2 * int(battery_volt, 16) / 100)
+            if battery_volt_int <= 3.8:
+                mapio_ctrl.logger.error("Charge fault")
+                mapio_ctrl.led_chg_green.off()
+                mapio_ctrl.led_chg_red.on()
+            else:
+                mapio_ctrl.logger.debug("Charging")
+                mapio_ctrl.led_chg_red.off()
+                if mapio_ctrl.led_chg_green.blink():
+                    need_synchro = True
+        elif mapio_ctrl.chg_boost_n.get_value() == 0:
+            mapio_ctrl.logger.debug("On Battery")
+            mapio_ctrl.led_chg_green.off()
+            mapio_ctrl.led_chg_red.off()
+            mapio_ctrl.led_chg_green.on()
+            mapio_ctrl.led_chg_red.on()
+        else:
+            mapio_ctrl.logger.debug("Charged")
+            mapio_ctrl.led_chg_green.off()
+            mapio_ctrl.led_chg_green.on()
+
+        # Leds synchronization
+        if need_synchro:
+            mapio_ctrl.logger.info("Re synchronized the leds")
+            for led in mapio_ctrl.all_leds:
+                if led.is_blinking:
+                    led.off()
+                    led.blink()
+            need_synchro = False
+
         time.sleep(1)
 
 
