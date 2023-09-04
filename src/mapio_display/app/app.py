@@ -1,6 +1,7 @@
 import datetime
 import logging
 import os
+import subprocess  # nosec
 import threading
 import time
 from collections import deque
@@ -26,7 +27,7 @@ class MAPIO_CTRL(object):
 
         # ePaper control
         self.epd = EPD()
-        self.views_list = ["HOME", "SYSTEM"]
+        self.views_list = ["HOME", "STATUS", "SYSTEM"]
         self.views_pool = deque(self.views_list)
         self.need_refresh = False
         self.current_view = self.views_pool[0]
@@ -55,6 +56,8 @@ class MAPIO_CTRL(object):
             image = self._generate_home_view(wait)
         elif self.current_view == "SYSTEM":
             image = self._generate_system_view(wait)
+        elif self.current_view == "STATUS":
+            image = self._generate_status_view(wait)
 
         return self.epd.getbuffer(image)
 
@@ -95,7 +98,7 @@ class MAPIO_CTRL(object):
                 "/usr/share/fonts/ttf/LiberationMono-Bold.ttf", 12
             )
             os_version = Path("/etc/os-version").read_text()
-        except AssertionError:
+        except:  # noqa: E722
             os_version = "None"
         image_editable.text((120, 90), "MAPIO OS: ", 0, font=font)
         image_editable.text((120, 105), os_version, 0, font=font)
@@ -163,6 +166,55 @@ class MAPIO_CTRL(object):
                 "/usr/share/fonts/ttf/LiberationMono-Bold.ttf", 12
             )
             draw.text((194, 96), "Wait...", font=fontwait, fill=0)
+        return image
+
+    def _generate_status_view(self, wait: bool) -> Image:
+        """Generate the status view as an image
+
+        Args:
+            wait (bool): Indicates if wait message is printed
+
+        Returns:
+            Image: The status image
+        """
+        font = ImageFont.truetype("/usr/share/fonts/ttf/LiberationMono-Bold.ttf", 15)
+        image = Image.new("1", (self.epd.height, self.epd.width), 255)
+        draw = ImageDraw.Draw(image)
+        draw.line([(0, 40), (255, 40)])
+        draw.line([(0, 80), (255, 80)])
+        draw.text((0, 10), "Power", font=font, fill=0)
+        if os.system("systemctl is-active --quiet docker.service") == 0:  # nosec
+            draw.text((0, 90), "Docker    RUNNING", font=font, fill=0)
+        else:
+            draw.text((0, 90), "Docker    STOPPED", font=font, fill=0)
+
+        command = ["ping", "-c", "1", "-W", "1", "google.fr"]
+        if subprocess.call(command) == 0:  # nosec
+            draw.text((0, 50), "Internet  CONNECTED", font=font, fill=0)
+        else:
+            draw.text((0, 50), "Internet  NOT CONNECTED", font=font, fill=0)
+
+        if self.chg_chg_n.get_value() == 0:
+            battery_volt = os.popen(  # nosec
+                "vcgencmd pmicrd 1d | awk '{print $3}'"  # nosec
+            ).read()  # nosec
+            battery_volt_int = round(2 * int(battery_volt, 16) / 100)
+            draw.text(
+                (0, 10), f"Power     CHARGING ({battery_volt_int}V)", font=font, fill=0
+            )
+        elif self.chg_boost_n.get_value() == 0:
+            draw.text((0, 10), "Power    ON BATTERY", font=font, fill=0)
+        else:
+            draw.text((0, 10), "Power     CHARGED", font=font, fill=0)
+
+        # Wait rectangle
+        draw.rectangle((190, 92, 245, 117), fill=255, outline="black")
+        if wait:
+            fontwait = ImageFont.truetype(
+                "/usr/share/fonts/ttf/LiberationMono-Bold.ttf", 12
+            )
+            draw.text((194, 96), "Wait...", font=fontwait, fill=0)
+
         return image
 
 
