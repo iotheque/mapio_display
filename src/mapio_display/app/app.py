@@ -1,6 +1,8 @@
 import datetime
 import logging
 import os
+import random
+import string
 import subprocess  # nosec
 import threading
 import time
@@ -12,6 +14,7 @@ import gpiod
 import netifaces  # type: ignore
 import netifaces as ni  # type: ignore
 import psutil  # type: ignore
+import qrcode  # type: ignore
 from gpiod import chip, line_request
 from netifaces import AF_INET  # type: ignore
 from PIL import Image, ImageDraw, ImageFont  # type: ignore
@@ -28,10 +31,11 @@ class MAPIO_CTRL(object):
 
         # ePaper control
         self.epd = EPD()
-        self.views_list = ["HOME", "STATUS", "SYSTEM"]
+        self.views_list = ["HOME", "STATUS", "SETUP", "SYSTEM"]
         self.views_pool = deque(self.views_list)
         self.need_refresh = False
         self.current_view = self.views_pool[0]
+        self.mid_press = False
 
         # Init ePaper
         self.epd.init()
@@ -65,6 +69,9 @@ class MAPIO_CTRL(object):
         self.chg_boost_n = chip.get_line(10)
         self.chg_boost_n.request(config)
 
+        # Access point
+        self.wifi_passwd = ""
+
     # ePaper methods
     def get_current_buffered_image(self, wait: bool = False) -> Image:
         """Get current image as buffered
@@ -82,6 +89,8 @@ class MAPIO_CTRL(object):
             image = self._generate_system_view(wait)
         elif self.current_view == "STATUS":
             image = self._generate_status_view(wait)
+        elif self.current_view == "SETUP":
+            image = self._generate_setup_view(wait)
 
         return self.epd.getbuffer(image)
 
@@ -108,12 +117,7 @@ class MAPIO_CTRL(object):
         draw.text((120, 2), clock, 0, font=font)
 
         # Wait rectangle
-        draw.rectangle((190, 92, 245, 117), fill=255, outline="black")
-        if wait:
-            fontwait = ImageFont.truetype(
-                "/usr/share/fonts/ttf/LiberationMono-Bold.ttf", 12
-            )
-            draw.text((194, 96), "Wait...", font=fontwait, fill=0)
+        self._draw_wait_rectangle(wait, draw)
 
         # Add version
         try:
@@ -184,12 +188,9 @@ class MAPIO_CTRL(object):
             fill=0,
         )
 
-        draw.rectangle((190, 92, 245, 117), fill=255, outline="black")
-        if wait:
-            fontwait = ImageFont.truetype(
-                "/usr/share/fonts/ttf/LiberationMono-Bold.ttf", 12
-            )
-            draw.text((194, 96), "Wait...", font=fontwait, fill=0)
+        # Wait rectangle
+        self._draw_wait_rectangle(wait, draw)
+
         return image
 
     def _generate_status_view(self, wait: bool) -> Image:
@@ -212,8 +213,7 @@ class MAPIO_CTRL(object):
         else:
             draw.text((0, 90), "Docker    STOPPED", font=font, fill=0)
 
-        command = ["ping", "-c", "1", "-W", "1", "google.fr"]
-        if subprocess.call(command) == 0:  # nosec
+        if self._send_ping_command():
             draw.text((0, 50), "Internet  CONNECTED", font=font, fill=0)
         else:
             draw.text((0, 50), "Internet  NOT CONNECTED", font=font, fill=0)
@@ -232,17 +232,134 @@ class MAPIO_CTRL(object):
             draw.text((0, 10), "Power     CHARGED", font=font, fill=0)
 
         # Wait rectangle
-        draw.rectangle((190, 92, 245, 117), fill=255, outline="black")
+        self._draw_wait_rectangle(wait, draw)
+
+        return image
+
+    def _generate_setup_view(self, wait: bool) -> Image:
+        """Generate the status view as an image
+
+        Args:
+            wait (bool): Indicates if wait message is printed
+
+        Returns:
+            Image: The status image
+        """
+        image = Image.new("1", (self.epd.height, self.epd.width), 255)
+        draw = ImageDraw.Draw(image)
+        font = ImageFont.truetype("/usr/share/fonts/ttf/LiberationMono-Bold.ttf", 12)
+
+        try:
+            def_gw_device = netifaces.gateways()["default"][netifaces.AF_INET][1]
+            ip_addr = ni.ifaddresses(def_gw_device)[AF_INET][0]["addr"]
+        except:  # noqa: E722
+            ip_addr = "10.50.0.1"
+        url = f"{ip_addr}:8456"
+
+        if os.system("systemctl is-active --quiet mapio-setup-wizard") == 0:  # nosec
+            draw.text((105, 10), "Setup app is running:", font=font, fill=0)
+            draw.text((105, 25), url, font=font, fill=0)
+
+            draw.text((105, 80), "Press MID to disable", font=font, fill=0)
+            draw.text((105, 95), "the app", font=font, fill=0)
+
+            # Check if current connexion is ok
+            if not self._send_ping_command():
+                # Enable access point if not already running
+                font15 = ImageFont.truetype(
+                    "/usr/share/fonts/ttf/LiberationMono-Bold.ttf", 15
+                )
+
+                self._enable_access_point()
+                draw.text((105, 40), "SSID: MAPIO", font=font15, fill=0)
+                draw.text((105, 55), f"pass: {self.wifi_passwd}", font=font15, fill=0)
+
+            addr_code = qrcode.QRCode(
+                error_correction=qrcode.constants.ERROR_CORRECT_H, border=0
+            )
+            addr_code.add_data(f"http://{url}")
+            qr_img = addr_code.make_image().resize((100, 100))
+            image.paste(qr_img, (0, 10))
+
+            if self.mid_press:
+                self.mid_press = False
+                os.system("systemctl stop mapio-setup-wizard")  # nosec
+                os.system("systemctl stop wpa_supplicant-ap")  # nosec
+
+        else:
+            draw.text((105, 10), "Setup webapp is", font=font, fill=0)
+            draw.text((120, 25), "not running", font=font, fill=0)
+
+            draw.text((105, 80), "Press MID to enable", font=font, fill=0)
+            draw.text((105, 95), "the app", font=font, fill=0)
+
+            if self.mid_press:
+                self.mid_press = False
+                os.system("systemctl start mapio-setup-wizard")  # nosec
+
+        # Wait rectangle
+        self._draw_wait_rectangle(wait, draw)
+
+        return image
+
+    def _draw_wait_rectangle(self, wait: bool, draw: ImageDraw) -> Image:
+        """Draw wait rectangle on an image
+
+        Args:
+            wait (bool): Boolean to indicate if the rectangle is filled
+            draw (ImageDraw): The image to modify
+
+        Returns:
+            Image: The modified image
+        """
+        draw.rectangle((192, 96, 247, 121), fill=255, outline="black")
         if wait:
             fontwait = ImageFont.truetype(
                 "/usr/share/fonts/ttf/LiberationMono-Bold.ttf", 12
             )
-            draw.text((194, 96), "Wait...", font=fontwait, fill=0)
+            draw.text((196, 100), "Wait...", font=fontwait, fill=0)
 
-        return image
+    def _send_ping_command(self) -> bool:
+        """Send a ping command to test internet connection
+
+        Returns:
+            bool: True if ping is successful, False otherwise
+        """
+        command = ["ping", "-c", "1", "-W", "1", "8.8.8.8"]
+        if subprocess.call(command) == 0:  # nosec
+            return True
+        else:
+            return False
+
+    def _enable_access_point(self) -> None:
+        """Enable the WIFI access point with dynamic password
+
+        If the access point was already active, this function does
+        nothing.
+        """
+        if os.system("systemctl is-active wpa_supplicant-ap") == 0:  # nosec
+            self.logger.debug("Access point WIFI is already active")
+        else:
+            self.logger.info("Enable WIFI access point")
+            # Generate a random wifi password
+            self.wifi_passwd = "".join(
+                random.choice(string.ascii_lowercase) for i in range(8)
+            )
+            sed_arg = f's/psk=.*/psk="{self.wifi_passwd}"/g'
+            # Replace the password in current access point configuration
+            command = [
+                "sed",
+                "-i",
+                sed_arg,
+                "/etc/wpa_supplicant/wpa_supplicant-ap.conf",
+            ]
+            subprocess.call(command)
+            os.system("systemctl stop wpa_supplicant@wlan0")  # nosec
+            os.system("systemctl restart wpa_supplicant-ap")  # nosec
 
 
 # Create MAPIO control object
+# This object is global to app module
 mapio_ctrl = MAPIO_CTRL()
 
 
@@ -350,7 +467,7 @@ def _gpio_chip_handler(buttons: Any) -> None:
         if not lines.empty:
             for it in lines:
                 event = it.event_read()
-                mapio_ctrl.logger.info(f"Event: {event}")
+                mapio_ctrl.logger.debug(f"Event: {event}")
                 mapio_ctrl.logger.info(it.consumer)
                 if it.consumer == "UP":
                     mapio_ctrl.need_refresh = True
@@ -362,6 +479,8 @@ def _gpio_chip_handler(buttons: Any) -> None:
                     mapio_ctrl.logger.info(f"next view is: {mapio_ctrl.views_pool[0]}")
                 elif it.consumer == "MID":
                     mapio_ctrl.logger.info("MID has been pushed")
+                    mapio_ctrl.need_refresh = True
+                    mapio_ctrl.mid_press = True
                 else:
                     mapio_ctrl.logger.error("Unknown button")
         time.sleep(1)
