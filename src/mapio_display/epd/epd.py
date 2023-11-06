@@ -194,6 +194,9 @@ class EPD:
             Any: Generated buffer
         """
         img = image
+        # Rotate the image because screen is placed at 180°
+        img = img.rotate(180)
+
         imwidth, imheight = img.size
         self.logger.debug(f"imwidth {imwidth}, imheight {imheight}")
         if imwidth == self.width and imheight == self.height:
