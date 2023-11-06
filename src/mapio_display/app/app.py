@@ -22,7 +22,7 @@ from PIL import Image, ImageDraw, ImageFont  # type: ignore
 from mapio_display.epd.epd import EPD
 from mapio_display.leds.leds import LED
 
-SCREEN_REFRESH_PERIOD_S = 20
+SCREEN_REFRESH_PERIOD_S = 60
 
 
 class MAPIO_CTRL(object):
