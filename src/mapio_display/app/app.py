@@ -256,7 +256,7 @@ class MAPIO_CTRL(object):
             ip_addr = "10.50.0.1"
         url = f"{ip_addr}:8456"
 
-        if os.system("systemctl is-active --quiet mapio-setup-wizard") == 0:  # nosec
+        if os.system("systemctl is-active --quiet mapio-webserver-back") == 0:  # nosec
             draw.text((105, 10), "Setup app is running:", font=font, fill=0)
             draw.text((105, 25), url, font=font, fill=0)
 
@@ -283,7 +283,8 @@ class MAPIO_CTRL(object):
 
             if self.mid_press:
                 self.mid_press = False
-                os.system("systemctl stop mapio-setup-wizard")  # nosec
+                os.system("systemctl stop mapio-webserver-back")  # nosec
+                os.system("systemctl stop nginx")  # nosec
                 os.system("systemctl stop wpa_supplicant-ap")  # nosec
 
         else:
@@ -295,7 +296,8 @@ class MAPIO_CTRL(object):
 
             if self.mid_press:
                 self.mid_press = False
-                os.system("systemctl start mapio-setup-wizard")  # nosec
+                os.system("systemctl start mapio-webserver-back")  # nosec
+                os.system("systemctl start nginx")  # nosec
 
         # Wait rectangle
         self._draw_wait_rectangle(wait, draw)
