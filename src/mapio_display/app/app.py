@@ -125,7 +125,9 @@ class MAPIO_CTRL(object):
             font = ImageFont.truetype(
                 "/usr/share/fonts/ttf/LiberationMono-Bold.ttf", 12
             )
-            os_version = Path("/etc/os-version").read_text()
+            os_version = os.popen(  # nosec
+                "cat /etc/os-release | grep PRETTY_NAME | awk '{print $4}'"  # nosec
+            ).read()  # nosec
         except:  # noqa: E722
             os_version = "None"
         image_editable.text((120, 90), "MAPIO OS: ", 0, font=font)
