@@ -268,32 +268,45 @@ class MAPIO_CTRL(object):
             ip_addr = ni.ifaddresses(def_gw_device)[AF_INET][0]["addr"]
         except:  # noqa: E722
             ip_addr = "10.50.0.1"
-        url = f"{ip_addr}:8456"
+        url = f"{ip_addr}"
 
         if os.system("systemctl is-active --quiet mapio-webserver-back") == 0:  # nosec
-            draw.text((105, 10), "Setup app is running:", font=font, fill=0)
-            draw.text((105, 25), url, font=font, fill=0)
-
-            draw.text((105, 80), "Press MID to disable", font=font, fill=0)
-            draw.text((105, 95), "the app", font=font, fill=0)
+            draw.text((130, 0), f"{url}", font=font, fill=0)
+            draw.text((0, 100), "Webserver is running", font=font, fill=0)
+            draw.text((0, 110), "Press MID to disable server", font=font, fill=0)
 
             # Check if current connexion is ok
             if not self._send_ping_command():
                 # Enable access point if not already running
-                font15 = ImageFont.truetype(
-                    "/usr/share/fonts/ttf/LiberationMono-Bold.ttf", 15
+                font12 = ImageFont.truetype(
+                    "/usr/share/fonts/ttf/LiberationMono-Bold.ttf", 12
                 )
 
                 self._enable_access_point()
-                draw.text((105, 40), "SSID: MAPIO", font=font15, fill=0)
-                draw.text((105, 55), f"pass: {self.wifi_passwd}", font=font15, fill=0)
+                draw.text((0, 0), "WIFI AP ON", font=font, fill=0)
+                text_layer = Image.new("1", (90, 30), 255)
+                draw_rot = ImageDraw.Draw(text_layer)
+                draw_rot.text((0, 0), "SSID:MAPIO", font=font12, fill=0)
+                draw_rot.text((0, 15), f"PASS:{self.wifi_passwd}", font=font12, fill=0)
+                rotated_text_layer = text_layer.rotate(90.0, expand=1)
+                image.paste(rotated_text_layer, (85, 10))
+
+                wifi_data = f"WIFI:S:MAPIO;T:WPA;P:{self.wifi_passwd};;"
+                addr_code = qrcode.QRCode(
+                    error_correction=qrcode.constants.ERROR_CORRECT_H, border=0
+                )
+                addr_code.add_data(wifi_data)
+                qr_img = addr_code.make_image().resize((80, 80))
+                image.paste(qr_img, (0, 15))
+            else:
+                draw.text((0, 0), "WIFI AP OFF", font=font, fill=0)
 
             addr_code = qrcode.QRCode(
                 error_correction=qrcode.constants.ERROR_CORRECT_H, border=0
             )
             addr_code.add_data(f"http://{url}")
-            qr_img = addr_code.make_image().resize((100, 100))
-            image.paste(qr_img, (0, 10))
+            qr_img = addr_code.make_image().resize((80, 80))
+            image.paste(qr_img, (150, 15))
 
             if self.mid_press:
                 self.mid_press = False
@@ -302,11 +315,8 @@ class MAPIO_CTRL(object):
                 os.system("systemctl stop wpa_supplicant-ap")  # nosec
 
         else:
-            draw.text((105, 10), "Setup webapp is", font=font, fill=0)
-            draw.text((120, 25), "not running", font=font, fill=0)
-
-            draw.text((105, 80), "Press MID to enable", font=font, fill=0)
-            draw.text((105, 95), "the app", font=font, fill=0)
+            draw.text((30, 10), "Webserver is not running", font=font, fill=0)
+            draw.text((30, 80), "Press MID to enable it", font=font, fill=0)
 
             if self.mid_press:
                 self.mid_press = False
