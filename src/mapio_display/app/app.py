@@ -221,10 +221,22 @@ class MAPIO_CTRL(object):
             draw.text((0, 50), "Internet  NOT CONNECTED", font=font, fill=0)
 
         if self.chg_chg_n.get_value() == 0:
-            battery_volt = os.popen(  # nosec
-                "vcgencmd pmicrd 1d | awk '{print $3}'"  # nosec
-            ).read()  # nosec
-            battery_volt_int = round(2 * int(battery_volt, 16) / 100)
+            # Get PMIC model
+            model = os.popen("vcgencmd pmicrd 0 | awk '{print $3}'").read()  # nosec
+            if model.strip() == "a0":
+                # MAX LINEAR MXL7704
+                # Read AIN0 value
+                battery_volt = os.popen(  # nosec
+                    "vcgencmd pmicrd 1d | awk '{print $3}'"  # nosec
+                ).read()  # nosec
+                battery_volt_int = round(2 * int(battery_volt, 16) / 100)
+            else:
+                # DA9090 PMIC
+                # Read AIN0 value
+                battery_volt = os.popen(  # nosec
+                    "vcgencmd pmicrd 0x13 | awk '{print $3}'"  # nosec
+                ).read()  # nosec
+                battery_volt_int = round(4 * int(battery_volt, 16) / 100)
             draw.text(
                 (0, 10), f"Power     CHARGING ({battery_volt_int}V)", font=font, fill=0
             )
@@ -424,19 +436,10 @@ def refresh_leds_task() -> None:
 
         # LED3 management
         if mapio_ctrl.chg_chg_n.get_value() == 0:
-            battery_volt = os.popen(  # nosec
-                "vcgencmd pmicrd 1d | awk '{print $3}'"  # nosec
-            ).read()  # nosec
-            battery_volt_int = round(2 * int(battery_volt, 16) / 100)
-            if battery_volt_int <= 3.8:
-                mapio_ctrl.logger.error("Charge fault")
-                mapio_ctrl.led_chg_green.off()
-                mapio_ctrl.led_chg_red.on()
-            else:
-                mapio_ctrl.logger.debug("Charging")
-                mapio_ctrl.led_chg_red.off()
-                if mapio_ctrl.led_chg_green.blink():
-                    need_synchro = True
+            mapio_ctrl.logger.debug("Charging")
+            mapio_ctrl.led_chg_red.off()
+            if mapio_ctrl.led_chg_green.blink():
+                need_synchro = True
         elif mapio_ctrl.chg_boost_n.get_value() == 0:
             mapio_ctrl.logger.debug("On Battery")
             mapio_ctrl.led_chg_green.off()
