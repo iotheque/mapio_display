@@ -32,6 +32,9 @@ class MAPIO_CTRL(object):
         # ePaper control
         self.epd = EPD()
         self.views_list = ["HOME", "STATUS", "SETUP", "SYSTEM"]
+        # check if there is a custom image to print
+        if os.path.exists("/usr/local/homeassistant/media/epaper.jpg"):
+            self.views_list.append("CUSTOM")
         self.views_pool = deque(self.views_list)
         self.need_refresh = False
         self.current_view = self.views_pool[0]
@@ -98,8 +101,29 @@ class MAPIO_CTRL(object):
             image = self._generate_status_view(wait)
         elif self.current_view == "SETUP":
             image = self._generate_setup_view(wait)
+        elif self.current_view == "CUSTOM":
+            image = self._generate_custom_view(wait)
 
         return self.epd.getbuffer(image)
+
+    def _generate_custom_view(self, wait: bool) -> Image:
+        """Generate the custom view as an image
+
+        Args:
+            wait (bool): Indicates if wait message is printed
+
+        Returns:
+            Image: The custom view
+        """
+        image = Image.new(
+            "1", (self.epd.height, self.epd.width), 255
+        )  # 255: clear the frame
+        if os.path.exists("/usr/local/homeassistant/media/epaper.jpg"):
+            img = Image.open("/usr/local/homeassistant/media/epaper.jpg")
+            self.logger.info("Returns custom image")
+            image.paste(img, (0, 0))
+            return image
+        return image
 
     def _generate_home_view(self, wait: bool) -> Image:
         """Generate the home view as an image
