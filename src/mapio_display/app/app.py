@@ -8,7 +8,7 @@ import threading
 import time
 from collections import deque
 from pathlib import Path
-from typing import Any
+from typing import Any, Tuple
 
 import gpiod
 import netifaces  # type: ignore
@@ -36,6 +36,13 @@ class MAPIO_CTRL(object):
         self.need_refresh = False
         self.current_view = self.views_pool[0]
         self.mid_press = False
+
+        # ePaper Fonts
+        font_path = "/usr/share/fonts/ttf/LiberationMono-Bold.ttf"
+        self.font12 = ImageFont.truetype(font_path, 12)
+        self.font15 = ImageFont.truetype(font_path, 15)
+        self.font28 = ImageFont.truetype(font_path, 28)
+        self.font40 = ImageFont.truetype(font_path, 40)
 
         # Init ePaper
         self.epd.init()
@@ -112,9 +119,8 @@ class MAPIO_CTRL(object):
 
         # Add hour
         draw = ImageDraw.Draw(image)
-        font = ImageFont.truetype("/usr/share/fonts/ttf/LiberationMono-Bold.ttf", 40)
         clock = datetime.datetime.now().strftime("%H:%M")
-        draw.text((120, 2), clock, 0, font=font)
+        draw.text((120, 2), clock, 0, font=self.font40)
 
         # Wait rectangle
         self._draw_wait_rectangle(wait, draw)
@@ -122,28 +128,22 @@ class MAPIO_CTRL(object):
         # Add version
         try:
             image_editable = ImageDraw.Draw(image)
-            font = ImageFont.truetype(
-                "/usr/share/fonts/ttf/LiberationMono-Bold.ttf", 12
-            )
             os_version = os.popen(  # nosec
                 "cat /etc/os-release | grep PRETTY_NAME | awk '{print $4}'"  # nosec
             ).read()  # nosec
         except:  # noqa: E722
             os_version = "None"
-        image_editable.text((120, 90), "MAPIO OS: ", 0, font=font)
-        image_editable.text((120, 105), os_version, 0, font=font)
+        image_editable.text((120, 90), "MAPIO OS: ", 0, font=self.font12)
+        image_editable.text((120, 105), os_version, 0, font=self.font12)
 
         # Add IP address
         try:
             image_editable = ImageDraw.Draw(image)
-            font = ImageFont.truetype(
-                "/usr/share/fonts/ttf/LiberationMono-Bold.ttf", 12
-            )
             def_gw_device = netifaces.gateways()["default"][netifaces.AF_INET][1]
             ip_addr = ni.ifaddresses(def_gw_device)[AF_INET][0]["addr"]
         except:  # noqa: E722
             ip_addr = "NO IP"
-        image_editable.text((120, 70), ip_addr, 0, font=font)
+        image_editable.text((120, 70), ip_addr, 0, font=self.font12)
 
         return image
 
@@ -156,37 +156,36 @@ class MAPIO_CTRL(object):
         Returns:
             Image: The system image
         """
-        font = ImageFont.truetype("/usr/share/fonts/ttf/LiberationMono-Bold.ttf", 28)
         image = Image.new("1", (self.epd.height, self.epd.width), 255)
         draw = ImageDraw.Draw(image)
-        draw.text((0, 0), "System ", font=font, fill=0)
+        draw.text((0, 0), "System ", font=self.font28, fill=0)
 
-        font = ImageFont.truetype("/usr/share/fonts/ttf/LiberationMono-Bold.ttf", 15)
-        draw.text((0, 30), f"•CPU: {psutil.cpu_percent()}%", font=font, fill=0)
+        draw.text((0, 30), f"•CPU: {psutil.cpu_percent()}%", font=self.font15, fill=0)
         draw.text(
-            (120, 30), f"•RAM: {psutil.virtual_memory().percent}%", font=font, fill=0
+            (120, 30),
+            f"•RAM: {psutil.virtual_memory().percent}%",
+            font=self.font15,
+            fill=0,
         )
 
         draw.text(
             (0, 50),
             f"•eMMC: {psutil.disk_usage('/usr/local').percent}%",
-            font=font,
+            font=self.font15,
             fill=0,
         )
         uptime = os.popen(  # nosec
             "uptime | awk -F ',' '{print $1}' | cut -c14-"  # nosec
         ).read()  # nosec
-        draw.text((120, 50), f"•Uptime: {uptime}", font=font, fill=0)
+        draw.text((120, 50), f"•Uptime: {uptime}", font=self.font15, fill=0)
 
-        battery_volt = os.popen("vcgencmd pmicrd 1d | awk '{print $3}'").read()  # nosec
-        battery_volt_int = round(4 * int(battery_volt, 16) / 100) / 2
-
-        draw.text((0, 70), f"•Battery: {battery_volt_int}V", font=font, fill=0)
+        battery_volt, _ = self._get_battery_voltage()
+        draw.text((0, 70), f"•Battery: {battery_volt}V", font=self.font15, fill=0)
 
         draw.text(
             (0, 90),
             f"•Temperature: {round(psutil.sensors_temperatures()['cpu_thermal'][0].current)}°C",
-            font=font,
+            font=self.font15,
             fill=0,
         )
 
@@ -204,46 +203,33 @@ class MAPIO_CTRL(object):
         Returns:
             Image: The status image
         """
-        font = ImageFont.truetype("/usr/share/fonts/ttf/LiberationMono-Bold.ttf", 15)
         image = Image.new("1", (self.epd.height, self.epd.width), 255)
         draw = ImageDraw.Draw(image)
         draw.line([(0, 40), (255, 40)])
         draw.line([(0, 80), (255, 80)])
-        draw.text((0, 10), "Power", font=font, fill=0)
+        draw.text((0, 10), "Power", font=self.font15, fill=0)
         if os.system("systemctl is-active --quiet docker.service") == 0:  # nosec
-            draw.text((0, 90), "Docker    RUNNING", font=font, fill=0)
+            draw.text((0, 90), "Docker    RUNNING", font=self.font15, fill=0)
         else:
-            draw.text((0, 90), "Docker    STOPPED", font=font, fill=0)
+            draw.text((0, 90), "Docker    STOPPED", font=self.font15, fill=0)
 
         if self._send_ping_command():
-            draw.text((0, 50), "Internet  CONNECTED", font=font, fill=0)
+            draw.text((0, 50), "Internet  CONNECTED", font=self.font15, fill=0)
         else:
-            draw.text((0, 50), "Internet  NOT CONNECTED", font=font, fill=0)
+            draw.text((0, 50), "Internet  NOT CONNECTED", font=self.font15, fill=0)
 
         if self.chg_chg_n.get_value() == 0:
-            # Get PMIC model
-            model = os.popen("vcgencmd pmicrd 0 | awk '{print $3}'").read()  # nosec
-            if model.strip() == "a0":
-                # MAX LINEAR MXL7704
-                # Read AIN0 value
-                battery_volt = os.popen(  # nosec
-                    "vcgencmd pmicrd 1d | awk '{print $3}'"  # nosec
-                ).read()  # nosec
-                battery_volt_int = round(2 * int(battery_volt, 16) / 100)
-            else:
-                # DA9090 PMIC
-                # Read AIN0 value
-                battery_volt = os.popen(  # nosec
-                    "vcgencmd pmicrd 0x13 | awk '{print $3}'"  # nosec
-                ).read()  # nosec
-                battery_volt_int = round(4 * int(battery_volt, 16) / 100)
+            _, percent = self._get_battery_voltage()
             draw.text(
-                (0, 10), f"Power     CHARGING ({battery_volt_int}V)", font=font, fill=0
+                (0, 10), f"Power     CHARGING ({percent}%)", font=self.font15, fill=0
             )
         elif self.chg_boost_n.get_value() == 0:
-            draw.text((0, 10), "Power    ON BATTERY", font=font, fill=0)
+            _, percent = self._get_battery_voltage()
+            draw.text(
+                (0, 10), f"Power    ON BATTERY ({percent}%)", font=self.font15, fill=0
+            )
         else:
-            draw.text((0, 10), "Power     CHARGED", font=font, fill=0)
+            draw.text((0, 10), "Power     CHARGED", font=self.font15, fill=0)
 
         # Wait rectangle
         self._draw_wait_rectangle(wait, draw)
@@ -261,7 +247,6 @@ class MAPIO_CTRL(object):
         """
         image = Image.new("1", (self.epd.height, self.epd.width), 255)
         draw = ImageDraw.Draw(image)
-        font = ImageFont.truetype("/usr/share/fonts/ttf/LiberationMono-Bold.ttf", 12)
 
         try:
             def_gw_device = netifaces.gateways()["default"][netifaces.AF_INET][1]
@@ -271,23 +256,20 @@ class MAPIO_CTRL(object):
         url = f"{ip_addr}"
 
         if os.system("systemctl is-active --quiet mapio-webserver-back") == 0:  # nosec
-            draw.text((130, 0), f"{url}", font=font, fill=0)
-            draw.text((0, 100), "Webserver is running", font=font, fill=0)
-            draw.text((0, 110), "Press MID to disable server", font=font, fill=0)
+            draw.text((130, 0), f"{url}", font=self.font12, fill=0)
+            draw.text((0, 100), "Webserver is running", font=self.font12, fill=0)
+            draw.text((0, 110), "Press MID to disable server", font=self.font12, fill=0)
 
             # Check if current connexion is ok
             if not self._send_ping_command():
-                # Enable access point if not already running
-                font12 = ImageFont.truetype(
-                    "/usr/share/fonts/ttf/LiberationMono-Bold.ttf", 12
-                )
-
                 self._enable_access_point()
-                draw.text((0, 0), "WIFI AP ON", font=font, fill=0)
+                draw.text((0, 0), "WIFI AP ON", font=self.font12, fill=0)
                 text_layer = Image.new("1", (90, 30), 255)
                 draw_rot = ImageDraw.Draw(text_layer)
-                draw_rot.text((0, 0), "SSID:MAPIO", font=font12, fill=0)
-                draw_rot.text((0, 15), f"PASS:{self.wifi_passwd}", font=font12, fill=0)
+                draw_rot.text((0, 0), "SSID:MAPIO", font=self.font12, fill=0)
+                draw_rot.text(
+                    (0, 15), f"PASS:{self.wifi_passwd}", font=self.font12, fill=0
+                )
                 rotated_text_layer = text_layer.rotate(90.0, expand=1)
                 image.paste(rotated_text_layer, (85, 10))
 
@@ -299,7 +281,7 @@ class MAPIO_CTRL(object):
                 qr_img = addr_code.make_image().resize((80, 80))
                 image.paste(qr_img, (0, 15))
             else:
-                draw.text((0, 0), "WIFI AP OFF", font=font, fill=0)
+                draw.text((0, 0), "WIFI AP OFF", font=self.font12, fill=0)
 
             addr_code = qrcode.QRCode(
                 error_correction=qrcode.constants.ERROR_CORRECT_H, border=0
@@ -315,8 +297,8 @@ class MAPIO_CTRL(object):
                 os.system("systemctl stop wpa_supplicant-ap")  # nosec
 
         else:
-            draw.text((30, 10), "Webserver is not running", font=font, fill=0)
-            draw.text((30, 80), "Press MID to enable it", font=font, fill=0)
+            draw.text((30, 10), "Webserver is not running", font=self.font12, fill=0)
+            draw.text((30, 80), "Press MID to enable it", font=self.font12, fill=0)
 
             if self.mid_press:
                 self.mid_press = False
@@ -340,10 +322,7 @@ class MAPIO_CTRL(object):
         """
         draw.rectangle((192, 96, 247, 121), fill=255, outline="black")
         if wait:
-            fontwait = ImageFont.truetype(
-                "/usr/share/fonts/ttf/LiberationMono-Bold.ttf", 12
-            )
-            draw.text((196, 100), "Wait...", font=fontwait, fill=0)
+            draw.text((196, 100), "Wait...", font=self.font12, fill=0)
 
     def _send_ping_command(self) -> bool:
         """Send a ping command to test internet connection
@@ -382,6 +361,36 @@ class MAPIO_CTRL(object):
             subprocess.call(command)
             os.system("systemctl stop wpa_supplicant@wlan0")  # nosec
             os.system("systemctl restart wpa_supplicant-ap")  # nosec
+
+    def _get_battery_voltage(self) -> Tuple[float, int]:
+        # Get PMIC model
+        model = os.popen("vcgencmd pmicrd 0 | awk '{print $3}'").read()  # nosec
+        if model.strip() == "a0":
+            # MAX LINEAR MXL7704
+            # Read AIN0 value
+            battery_volt = os.popen(  # nosec
+                "vcgencmd pmicrd 1d | awk '{print $3}'"  # nosec
+            ).read()  # nosec
+            battery_volt_int = 2 * int(battery_volt, 16) / 100
+        else:
+            # DA9090 PMIC
+            # Read AIN0 value
+            battery_volt = os.popen(  # nosec
+                "vcgencmd pmicrd 0x13 | awk '{print $3}'"  # nosec
+            ).read()  # nosec
+            battery_volt_int = 4 * int(battery_volt, 16) / 100
+
+        percent = 0
+        if battery_volt_int > 4:
+            percent = 100
+        elif battery_volt_int > 3.75:
+            percent = 75
+        elif battery_volt_int > 3.5:
+            percent = 50
+        elif battery_volt_int > 3.25:
+            percent = 25
+
+        return battery_volt_int, percent
 
 
 # Create MAPIO control object
