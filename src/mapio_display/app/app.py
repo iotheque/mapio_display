@@ -439,26 +439,22 @@ def refresh_screen_task() -> None:
 def refresh_leds_task() -> None:
     """Task that refresh the leds"""
     mapio_ctrl.logger.info("Start refresh leds task")
-    need_synchro = False
+
     while True:
         # LED1 management
         # Check if docker service is running
         if os.system("systemctl is-active --quiet docker.service") == 0:  # nosec
-            if mapio_ctrl.led_sys_green.blink():
-                need_synchro = True
+            mapio_ctrl.led_sys_green.on()
             mapio_ctrl.led_sys_red.off()
         else:
-            if mapio_ctrl.led_sys_green.blink():
-                need_synchro = True
-            if mapio_ctrl.led_sys_red.blink():
-                need_synchro = True
+            mapio_ctrl.led_sys_green.on()
+            mapio_ctrl.led_sys_red.on()
 
         # LED3 management
         if mapio_ctrl.chg_chg_n.get_value() == 0:
             mapio_ctrl.logger.debug("Charging")
             mapio_ctrl.led_chg_red.off()
-            if mapio_ctrl.led_chg_green.blink():
-                need_synchro = True
+            mapio_ctrl.led_chg_green.blink()
         elif mapio_ctrl.chg_boost_n.get_value() == 0:
             mapio_ctrl.logger.debug("On Battery")
             mapio_ctrl.led_chg_green.off()
@@ -470,15 +466,6 @@ def refresh_leds_task() -> None:
             mapio_ctrl.led_chg_green.off()
             mapio_ctrl.led_chg_green.on()
 
-        # Leds synchronization
-        if need_synchro:
-            mapio_ctrl.logger.info("Re synchronized the leds")
-            for led in mapio_ctrl.all_leds:
-                if led.is_blinking:
-                    led.off()
-                    led.blink()
-            need_synchro = False
-
         time.sleep(1)
 
 
@@ -486,7 +473,7 @@ def _gpio_chip_handler(buttons: Any) -> None:
     """Handler for GPIO buttons interrupts
 
     Args:
-        buttons (List): List of GPIO that trigs the interrupt
+        buttons (Any): List of GPIO that trigs the interrupt
     """
     while True:
         lines = buttons.event_wait(datetime.timedelta(seconds=10))
