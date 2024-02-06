@@ -4,6 +4,7 @@
 import logging
 import logging.config
 import sys
+import threading
 import time
 from pathlib import Path
 from typing import Optional
@@ -11,7 +12,12 @@ from typing import Optional
 # Third-party lib imports
 import click  # type: ignore
 
-from mapio_display.app.app import mapio_refresh_main_screen
+from mapio_display.app.app import (
+    gpio_mon_create_task,
+    refresh_leds_task,
+    refresh_screen_task,
+    set_logger_for_tasks,
+)
 from mapio_display.epd.epd import EPD
 
 # Local package imports
@@ -55,13 +61,17 @@ def app() -> None:
     logger = logging.getLogger((__name__))
     logger.info("Start screen")
 
-    epd = EPD()
-    epd.init()
-    epd.clear(0xFF)
-    epd.enter_deep_sleep()
+    set_logger_for_tasks(logger)
+    event = threading.Thread(target=refresh_screen_task)
+    event.start()
+
+    event = threading.Thread(target=refresh_leds_task)
+    event.start()
+
+    gpio_mon_create_task()
 
     while True:
-        mapio_refresh_main_screen(epd)
+        # Nothing to do, just wait
         time.sleep(10)
 
 
