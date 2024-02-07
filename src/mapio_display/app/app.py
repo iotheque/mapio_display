@@ -7,15 +7,15 @@ import subprocess  # nosec
 import threading
 import time
 from collections import deque
+from enum import Enum
 from pathlib import Path
 from typing import Any, Tuple
 
-import gpiod
 import netifaces  # type: ignore
 import netifaces as ni  # type: ignore
 import psutil  # type: ignore
 import qrcode  # type: ignore
-from gpiod import chip, line_request
+from gpiod import chip, line_request  # type: ignore
 from netifaces import AF_INET  # type: ignore
 from PIL import Image, ImageDraw, ImageFont  # type: ignore
 
@@ -23,6 +23,13 @@ from mapio_display.epd.epd import EPD
 from mapio_display.leds.leds import LED
 
 SCREEN_REFRESH_PERIOD_S = 60
+
+
+class BatteryState(Enum):
+    charging = "CHARGING"
+    charged = "CHARGED"
+    on_battery = "ON_BATTERY"
+    no_battery = "NO_BATTERY"
 
 
 class MAPIO_CTRL(object):
@@ -67,20 +74,8 @@ class MAPIO_CTRL(object):
             led.off()
             led.logger = self.logger
 
-        # GPIOs for charger control
-        chip = gpiod.chip(1)
-        config = gpiod.line_request()
-        config.request_type = gpiod.line_request.DIRECTION_INPUT
-        config.flags = gpiod.line_request.FLAG_BIAS_PULL_UP
-        self.chg_chg_n = chip.get_line(8)
-        self.chg_chg_n.request(config)
-        self.chg_acok_n = chip.get_line(9)
-        self.chg_acok_n.request(config)
-        self.chg_boost_n = chip.get_line(10)
-        self.chg_boost_n.request(config)
-
         # Access point
-        self.wifi_passwd = ""
+        self.wifi_passwd = ""  # nosec
 
     # ePaper methods
     def get_current_buffered_image(self, wait: bool = False) -> Image:
@@ -203,7 +198,10 @@ class MAPIO_CTRL(object):
         ).read()  # nosec
         draw.text((120, 50), f"•Uptime: {uptime}", font=self.font15, fill=0)
 
-        battery_volt, _ = self._get_battery_voltage()
+        if self._get_battery_state() == BatteryState.no_battery:
+            battery_volt = 0.0
+        else:
+            battery_volt, _ = self._get_battery_voltage()
         draw.text((0, 70), f"•Battery: {battery_volt}V", font=self.font15, fill=0)
 
         draw.text(
@@ -242,18 +240,20 @@ class MAPIO_CTRL(object):
         else:
             draw.text((0, 50), "Internet  NOT CONNECTED", font=self.font15, fill=0)
 
-        if self.chg_chg_n.get_value() == 0:
+        if self._get_battery_state() == BatteryState.charging:
             _, percent = self._get_battery_voltage()
             draw.text(
                 (0, 10), f"Power     CHARGING ({percent}%)", font=self.font15, fill=0
             )
-        elif self.chg_boost_n.get_value() == 0:
+        elif self._get_battery_state() == BatteryState.on_battery:
             _, percent = self._get_battery_voltage()
             draw.text(
                 (0, 10), f"Power    ON BATTERY ({percent}%)", font=self.font15, fill=0
             )
-        else:
+        elif self._get_battery_state() == BatteryState.charged:
             draw.text((0, 10), "Power     CHARGED", font=self.font15, fill=0)
+        else:
+            draw.text((0, 10), "Power    NO BATTERY", font=self.font15, fill=0)
 
         # Wait rectangle
         self._draw_wait_rectangle(wait, draw)
@@ -371,9 +371,9 @@ class MAPIO_CTRL(object):
         else:
             self.logger.info("Enable WIFI access point")
             # Generate a random wifi password
-            self.wifi_passwd = "".join(
-                random.choice(string.ascii_lowercase) for i in range(8)
-            )
+            self.wifi_passwd = "".join(  # nosec
+                random.choice(string.ascii_lowercase) for i in range(8)  # nosec
+            )  # nosec
             sed_arg = f's/psk=.*/psk="{self.wifi_passwd}"/g'
             # Replace the password in current access point configuration
             command = [
@@ -382,7 +382,7 @@ class MAPIO_CTRL(object):
                 sed_arg,
                 "/etc/wpa_supplicant/wpa_supplicant-ap.conf",
             ]
-            subprocess.call(command)
+            subprocess.call(command)  # nosec
             os.system("systemctl stop wpa_supplicant@wlan0")  # nosec
             os.system("systemctl restart wpa_supplicant-ap")  # nosec
 
@@ -415,6 +415,25 @@ class MAPIO_CTRL(object):
             percent = 25
 
         return battery_volt_int, percent
+
+    def _get_battery_state(self) -> BatteryState:
+
+        state: BatteryState
+        chg_chg_n = os.popen("gpioget 1 8").read().strip()  # nosec
+        chg_boost_n = os.popen("gpioget 1 10").read().strip()  # nosec
+
+        if chg_boost_n == "0":
+            state = BatteryState.on_battery
+        elif chg_chg_n == "0":
+            state = BatteryState.charging
+        else:
+            battery_volt_int, _ = self._get_battery_voltage()
+            if battery_volt_int < 4.2:
+                state = BatteryState.no_battery
+            else:
+                state = BatteryState.charged
+
+        return state
 
 
 # Create MAPIO control object
@@ -475,21 +494,24 @@ def refresh_leds_task() -> None:
             mapio_ctrl.led_sys_red.on()
 
         # LED3 management
-        if mapio_ctrl.chg_chg_n.get_value() == 0:
+        if mapio_ctrl._get_battery_state() == BatteryState.charging:
             mapio_ctrl.logger.debug("Charging")
             mapio_ctrl.led_chg_red.off()
             mapio_ctrl.led_chg_green.blink()
-        elif mapio_ctrl.chg_boost_n.get_value() == 0:
+        elif mapio_ctrl._get_battery_state() == BatteryState.on_battery:
             mapio_ctrl.logger.debug("On Battery")
             mapio_ctrl.led_chg_green.off()
             mapio_ctrl.led_chg_red.off()
             mapio_ctrl.led_chg_green.on()
             mapio_ctrl.led_chg_red.on()
-        else:
+        elif mapio_ctrl._get_battery_state() == BatteryState.charged:
             mapio_ctrl.logger.debug("Charged")
-            mapio_ctrl.led_chg_green.off()
+            mapio_ctrl.led_chg_red.off()
             mapio_ctrl.led_chg_green.on()
-
+        else:
+            mapio_ctrl.logger.debug("no battery")
+            mapio_ctrl.led_chg_red.on()
+            mapio_ctrl.led_chg_green.off()
         time.sleep(1)
 
 
