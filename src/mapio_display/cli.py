@@ -58,7 +58,8 @@ def main(
 
 @main.command()
 def app() -> None:
-    logger = logging.getLogger((__name__))
+    """App function for MAPIO ."""
+    logger = logging.getLogger(__name__)
     logger.info("Start screen")
 
     set_logger_for_tasks(logger)
@@ -77,7 +78,8 @@ def app() -> None:
 
 @main.command()
 def reset() -> None:
-    logger = logging.getLogger((__name__))
+    """Reset epaper."""
+    logger = logging.getLogger(__name__)
     logger.info("Reset screen")
 
     epd = EPD()

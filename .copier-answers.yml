@@ -1,0 +1,11 @@
+# Changes here will be overwritten by Copier
+_commit: 1.4.0
+_src_path: gh:AdrienCos/seedlings
+author_email: pierrickcurt@gmail.com
+author_name: Pierrick Curt
+author_username: pcurt
+enable_release_ci: true
+package_name: mapio_display
+project_name: mapio_display
+repository_url: https://github.com/pcurt/mapio_display
+short_description: MAPIO display source code

@@ -1,5 +1,6 @@
+"""MAPIO epaper control."""
+
 #!/usr/bin/python
-# -*- coding:utf-8 -*-
 import logging
 import time
 from typing import Any
@@ -19,7 +20,7 @@ BUSY_PIN = 12
 
 
 def epd_delay_ms(delaytime: int) -> None:
-    """Utility function to create a delay in ms
+    """Utility function to create a delay in ms.
 
     Args:
         delaytime (int): Wait delay in ms
@@ -28,13 +29,14 @@ def epd_delay_ms(delaytime: int) -> None:
 
 
 class EPD:
-    """Initialize a epaper class screen"""
+    """Initialize a epaper class screen."""
 
     def __init__(self) -> None:
+        """Initialise epaper."""
         self.logger = logging.getLogger(__name__)
         self.width = EPD_WIDTH
         self.height = EPD_HEIGHT
-        self.spi = spidev.SpiDev()
+        self.spi: Any = spidev.SpiDev()  # type: ignore
         self.spi.open(0, 0)
         self.spi.max_speed_hz = 4000000
 
@@ -52,7 +54,7 @@ class EPD:
         self.busy_gpio.request(config)
 
     def spi_transfer(self, data: Any) -> None:
-        """Write bytes on SPI bus
+        """Write bytes on SPI bus.
 
         Args:
             data (Any): Data to send on SPI
@@ -60,7 +62,7 @@ class EPD:
         self.spi.writebytes2(data)
 
     def reset(self) -> None:
-        """Reset EPD"""
+        """Reset EPD."""
         self.reset_gpio.set_value(1)
         epd_delay_ms(20)
         self.reset_gpio.set_value(0)
@@ -69,7 +71,7 @@ class EPD:
         epd_delay_ms(20)
 
     def send_command(self, command: Any) -> None:
-        """Send a command on EPD
+        """Send a command on EPD.
 
         Args:
             command (Any): Send a command on EPD (see EPD datasheet for more details)
@@ -78,7 +80,7 @@ class EPD:
         self.spi_transfer([command])
 
     def send_data(self, data: Any) -> None:
-        """Send data on EPD
+        """Send data on EPD.
 
         Args:
             data (Any): Send data on EPD (see EPD datasheet for more details)
@@ -88,7 +90,7 @@ class EPD:
 
     # send a lot of data
     def send_data2(self, data: Any) -> None:
-        """Send data on EPD
+        """Send data on EPD.
 
         Args:
             data (Any): Send a raw data on EPD (see EPD datasheet for more details)
@@ -97,28 +99,28 @@ class EPD:
         self.spi_transfer(data)
 
     def wait_busy(self) -> None:
-        """Wait EPD ready state"""
+        """Wait EPD ready state."""
         self.logger.debug("e-Paper busy")
         while self.busy_gpio.get_value() == 1:  # 0: idle, 1: busy
             epd_delay_ms(10)
         self.logger.debug("e-Paper busy release")
 
     def turn_on_display(self) -> None:
-        """Turn ON EPD"""
+        """Turn ON EPD."""
         self.send_command(0x22)  # Display Update Control
         self.send_data(0xF7)
         self.send_command(0x20)  # Activate Display Update Sequence
         self.wait_busy()
 
     def turn_on_display_part(self) -> None:
-        """Turn ON EPD"""
+        """Turn ON EPD."""
         self.send_command(0x22)  # Display Update Control
         self.send_data(0xFF)  # fast:0x0c, quality:0x0f, 0xcf
         self.send_command(0x20)  # Activate Display Update Sequence
         self.wait_busy()
 
     def set_window(self, x_start: int, y_start: int, x_end: int, y_end: int) -> None:
-        """Setting the display window
+        """Setting the display window.
 
         Args:
             x_start (int): _description_
@@ -138,7 +140,7 @@ class EPD:
         self.send_data((y_end >> 8) & 0xFF)
 
     def SetCursor(self, x: int, y: int) -> None:
-        """_summary_
+        """SetCursor on the screen.
 
         Args:
             x (int): X-axis starting position
@@ -153,7 +155,7 @@ class EPD:
         self.send_data((y >> 8) & 0xFF)
 
     def init(self) -> None:
-        """Initialize the e-Paper register"""
+        """Initialize the e-Paper register."""
         # EPD hardware init start
         self.reset()
 
@@ -184,8 +186,8 @@ class EPD:
 
         self.wait_busy()
 
-    def getbuffer(self, image: Image) -> Any:
-        """Generate a buffer based on an Image
+    def getbuffer(self, image: Image.Image) -> Any:
+        """Generate a buffer based on an Image.
 
         Args:
             image (Image): The image to transform in buffer
@@ -193,9 +195,8 @@ class EPD:
         Returns:
             Any: Generated buffer
         """
-        img = image
         # Rotate the image because screen is placed at 180°
-        img = img.rotate(180)
+        img = image.rotate(180)
 
         imwidth, imheight = img.size
         self.logger.debug(f"imwidth {imwidth}, imheight {imheight}")
@@ -206,30 +207,25 @@ class EPD:
             img = img.rotate(90, expand=True).convert("1")
         else:
             self.logger.warning(
-                "Wrong image dimensions: must be "
-                + str(self.width)
-                + "x"
-                + str(self.height)
+                "Wrong image dimensions: must be " + str(self.width) + "x" + str(self.height)
             )
             # return a blank buffer
             return [0x00] * (int(self.width / 8) * self.height)
 
-        buf = bytearray(img.tobytes("raw"))
-        return buf
+        return bytearray(img.tobytes())  # type: ignore
 
     def display(self, image: bytearray) -> None:
-        """Send and display the data on the screen
+        """Send and display the data on the screen.
 
         Args:
             image (bytearray): Data to send to screen
         """
-
         self.send_command(0x24)
         self.send_data2(image)
         self.turn_on_display()
 
     def display_partial(self, image: bytearray) -> None:
-        """Send the data on the screen and execute a partial refresh
+        """Send the data on the screen and execute a partial refresh.
 
         Args:
             image (bytearray): Data to send to screen
@@ -256,11 +252,11 @@ class EPD:
         self.send_data2(image)
         self.turn_on_display_part()
 
-    def displayPartBaseImage(self, image: bytearray) -> None:
-        """Refresh a base image
+    def displayPartBaseImage(self, image: Image.Image) -> None:
+        """Refresh a base image.
 
         Args:
-            image (bytearray): the raw image to send
+            image (Image): the raw image to send
         """
         self.send_command(0x24)
         self.send_data2(image)
@@ -270,7 +266,7 @@ class EPD:
         self.turn_on_display()
 
     def clear(self, color: int) -> None:
-        """Clear all the screen with specific color
+        """Clear all the screen with specific color.
 
         Args:
             color (int): Data to send to screen
@@ -285,7 +281,7 @@ class EPD:
         self.turn_on_display()
 
     def enter_deep_sleep(self) -> None:
-        """Set display in deep sleep mode"""
+        """Set display in deep sleep mode."""
         self.send_command(0x10)  # enter deep sleep
         self.send_data(0x01)
         epd_delay_ms(2000)
