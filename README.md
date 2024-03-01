@@ -1,49 +1,99 @@
 # mapio_display
 
-MAPIO display source code
+![PyPI - Python Version](https://img.shields.io/pypi/pyversions/sapling)
+![GitHub tag (with filter)](https://img.shields.io/github/v/tag/pcurt/mapio_display)
+![PDM](https://img.shields.io/badge/pdm-managed-blueviolet)
+![Black](https://img.shields.io/badge/code_style-black-000000)
+![Isort](https://img.shields.io/badge/imports-isort-1674b1?labelColor=ef8336)
+![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)
+[![Checked with pyright](https://microsoft.github.io/pyright/img/pyright_badge.svg)](https://microsoft.github.io/pyright/)
+![Pre Commit](https://img.shields.io/badge/pre_commit-enabled-brightgreen?logo=pre-commit)
 
-- [Development Quickstart](#development-quickstart)
-- [Installation](#installation)
-  - [From a release archive](#from-a-release-archive)
-  - [From sources](#from-sources)
+A Python project based on the Seedlings template
+
 - [Usage](#usage)
+- [Installation](#installation)
+  - [With `pipx`](#with-pipx)
+  - [With a `.pex` executable](#with-a-pex-executable)
+  - [With `pip`, from a release version](#with-pip-from-a-release-version)
+  - [With `pip`, from sources](#with-pip-from-sources)
+- [Development Quickstart](#development-quickstart)
 
-## Development Quickstart
+## Usage
 
-A quickstart guide/cheatsheet is [available here](./readme/Quickstart.md), that lists the useful commands when developing this package.
+Describe here how to use this Python application/package: CLI options and flags,
+API when imported by another package, etc.
 
 ## Installation
 
-The two following methods will install this project as an executable callable directly from your terminal.
+Installing this package can be achieved in multiple ways.
 
-Note that you should ideally run these `pip` commands in an active [virtualenv](https://docs.python.org/3/library/venv.html), and not in your system Python install.
+### With `pipx`
 
-### From a release archive
+[`pipx`](https://pypa.github.io/pipx/) is the recommended install method if you
+want to install the CLI provided by this package on your system, have it
+accessible anywhere, and not have to mess with `virtualenv`s.
 
-To install mapio_display, download the latest release archive fom Github, and run this command in your terminal:
+Once you have `pipx` installed on your machine, you can proceed with installing
+this package.
 
-``` sh
-pip install mapio_display-1.0.0-py3-none-any.whl
-# or
-pip install mapio_display-1.0.0.tar.gz
+- If this package is available on a Pip repository (e.g.
+  [pypi.org](https://pypi.org)), then you can simply run:
+
+```sh
+pipx install mapio_display
 ```
 
-### From sources
+- If you want to install it directly from the repository:
 
-The sources for mapio_display can be downloaded from the [Github repo](https://github.com/pcurt/mapio_display).
-
-Start by cloning the repository:
-
-``` sh
-git clone git@github.com:pcurt/mapio_display.git
+```sh
+pipx install git+https://github.com/pcurt/mapio_display
 ```
 
-Then enter the cloned directory (with `cd mapio_display/`), and install the project with:
+- If you downloaded a `.whl` or `.tar.gz` archive from the releases:
+
+```sh
+# Prebuilt wheel
+pipx install mapio_display-${VERSION}-py3-none-any.whl
+# Tarball
+pipx install mapio_display-${VERSION}.tar.gz
+```
+
+where `$VERSION` is the version of the package you downloaded.
+
+### With a `.pex` executable
+
+[`pex`](https://pex.readthedocs.io/en/latest/) is an executable Python
+virtualenv format, that can be executed on any machine that provides a suitable
+Python interpreter.
+
+To install the CLI provided by `mapio_display`, download the `.pex` files
+of the latest release, and copy them somewhere in your `$PATH` (on Linux,
+`~/.local/bin` is often a good idea). The executables will then be available in
+your shell.
+
+### With `pip`, from a release version
+
+If you do not wish to use the methods above, you can use `pip` instead. The same
+instructions as for `pipx` apply. However, remember to always run your `pip`
+commands from inside a `virtualenv`, to avoid polluting your system packages.
+
+### With `pip`, from sources
+
+If you want to install this project from source, you will need to first download
+them. For this, you can either download a release tarball, or directly clone
+this repository.
+
+Make sure you have a virtualenv activated to install this package.
+
+You can then enter the project directory (with `cd mapio_display/`), and
+install the project with:
 
 ``` sh
 pip install .
 ```
 
-## Usage
+## Development Quickstart
 
-Describe here how to use this Python package: CLI options and flags, API when imported by another package, etc.
+A quickstart guide/cheatsheet is [available here](./readme/Quickstart.md), it
+lists how to use the development tools for this project.
