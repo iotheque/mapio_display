@@ -101,9 +101,14 @@ class EPD:
     def wait_busy(self) -> None:
         """Wait EPD ready state."""
         self.logger.debug("e-Paper busy")
+        start_time = time.time()
         while self.busy_gpio.get_value() == 1:  # 0: idle, 1: busy
+            if time.time() - start_time > 2:
+                self.logger.error("Timeout occurred while waiting for e-Paper to become ready")
+                return
             epd_delay_ms(10)
         self.logger.debug("e-Paper busy release")
+        return
 
     def turn_on_display(self) -> None:
         """Turn ON EPD."""
