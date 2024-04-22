@@ -30,10 +30,9 @@ SCREEN_REFRESH_PERIOD_S = 60
 class BatteryState(Enum):
     """Enum that represents battery states."""
 
-    charging = "CHARGING"
-    charged = "CHARGED"
+    powered = "POWERED"
     on_battery = "ON_BATTERY"
-    no_battery = "NO_BATTERY"
+    critical = "CRITICAL_BATTERY"
 
 
 class MAPIO_CTRL:
@@ -199,10 +198,7 @@ class MAPIO_CTRL:
         uptime = os.popen("uptime | awk -F ',' '{print $1}' | cut -c14-").read()  # noqa
         draw.text((120, 50), f"•Uptime: {uptime}", font=self.font15, fill=0)
 
-        if self.get_battery_state() == BatteryState.no_battery:
-            battery_volt = 0.0
-        else:
-            battery_volt, _ = self._get_battery_voltage()
+        battery_volt, _ = self._get_battery_voltage()
         draw.text((0, 70), f"•Battery: {battery_volt}V", font=self.font15, fill=0)
 
         draw.text(
@@ -241,16 +237,13 @@ class MAPIO_CTRL:
         else:
             draw.text((0, 50), "Internet  NOT CONNECTED", font=self.font15, fill=0)
 
-        if self.get_battery_state() == BatteryState.charging:
-            _, percent = self._get_battery_voltage()
-            draw.text((0, 10), f"Power     CHARGING ({percent}%)", font=self.font15, fill=0)
+        _, percent = self._get_battery_voltage()
+        if self.get_battery_state() == BatteryState.powered:
+            draw.text((0, 10), f"POWERED level: {percent}%", font=self.font15, fill=0)
         elif self.get_battery_state() == BatteryState.on_battery:
-            _, percent = self._get_battery_voltage()
-            draw.text((0, 10), f"Power    ON BATTERY ({percent}%)", font=self.font15, fill=0)
-        elif self.get_battery_state() == BatteryState.charged:
-            draw.text((0, 10), "Power     CHARGED", font=self.font15, fill=0)
+            draw.text((0, 10), f"ON BATTERY level: {percent}%", font=self.font15, fill=0)
         else:
-            draw.text((0, 10), "Power    NO BATTERY", font=self.font15, fill=0)
+            draw.text((0, 10), f"CRITICAL BATTERY level: {percent}%", font=self.font15, fill=0)
 
         # Wait rectangle
         self._draw_wait_rectangle(wait, draw)
@@ -383,41 +376,38 @@ class MAPIO_CTRL:
             # MAX LINEAR MXL7704
             # Read AIN0 value
             battery_volt = os.popen("vcgencmd pmicrd 1d | awk '{print $3}'").read()  # noqa
-            battery_volt_int = 2 * int(battery_volt, 16) / 100
+            battery_volt_float = 2 * int(battery_volt, 16) / 100
         else:
             # DA9090 PMIC
             # Read AIN0 value
             battery_volt = os.popen("vcgencmd pmicrd 0x13 | awk '{print $3}'").read()  # noqa
-            battery_volt_int = 4 * int(battery_volt, 16) / 100
+            battery_volt_float = 4 * int(battery_volt, 16) / 100
 
         percent = 0
-        if battery_volt_int > 4:
+        if battery_volt_float > 4:
             percent = 100
-        elif battery_volt_int > 3.75:
+        elif battery_volt_float > 3.75:
             percent = 75
-        elif battery_volt_int > 3.5:
+        elif battery_volt_float > 3.5:
             percent = 50
-        elif battery_volt_int > 3.25:
+        elif battery_volt_float > 3.25:
             percent = 25
 
-        return battery_volt_int, percent
+        return battery_volt_float, percent
 
     def get_battery_state(self) -> BatteryState:
         """Return the current battery state."""
         state: BatteryState
-        chg_chg_n = os.popen("gpioget 1 8").read().strip()  # noqa
         chg_boost_n = os.popen("gpioget 1 10").read().strip()  # noqa
 
         if chg_boost_n == "0":
             state = BatteryState.on_battery
-        elif chg_chg_n == "0":
-            state = BatteryState.charging
         else:
-            battery_volt_int, _ = self._get_battery_voltage()
-            if battery_volt_int < 4.2:
-                state = BatteryState.no_battery
+            _, percent = self._get_battery_voltage()
+            if percent <= 25:
+                state = BatteryState.critical
             else:
-                state = BatteryState.charged
+                state = BatteryState.powered
 
         return state
 
@@ -478,22 +468,18 @@ def refresh_leds_task() -> None:
             mapio_ctrl.led_sys_red.on()
 
         # LED3 management
-        if mapio_ctrl.get_battery_state() == BatteryState.charging:
-            mapio_ctrl.logger.debug("Charging")
+        if mapio_ctrl.get_battery_state() == BatteryState.powered:
+            mapio_ctrl.logger.debug("Powered")
             mapio_ctrl.led_chg_red.off()
-            mapio_ctrl.led_chg_green.blink()
+            mapio_ctrl.led_chg_green.on()
         elif mapio_ctrl.get_battery_state() == BatteryState.on_battery:
             mapio_ctrl.logger.debug("On Battery")
             mapio_ctrl.led_chg_green.off()
             mapio_ctrl.led_chg_red.off()
             mapio_ctrl.led_chg_green.on()
             mapio_ctrl.led_chg_red.on()
-        elif mapio_ctrl.get_battery_state() == BatteryState.charged:
-            mapio_ctrl.logger.debug("Charged")
-            mapio_ctrl.led_chg_red.off()
-            mapio_ctrl.led_chg_green.on()
-        else:
-            mapio_ctrl.logger.debug("no battery")
+        elif mapio_ctrl.get_battery_state() == BatteryState.critical:
+            mapio_ctrl.logger.debug("Crititcal Battery")
             mapio_ctrl.led_chg_red.on()
             mapio_ctrl.led_chg_green.off()
         time.sleep(1)
