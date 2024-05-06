@@ -226,7 +226,6 @@ class MAPIO_CTRL:
         draw: Any = ImageDraw.Draw(image)
         draw.line([(0, 40), (255, 40)])
         draw.line([(0, 80), (255, 80)])
-        draw.text((0, 10), "Power", font=self.font15, fill=0)
         if os.system("systemctl is-active --quiet docker.service") == 0:  # noqa
             draw.text((0, 90), "Docker    RUNNING", font=self.font15, fill=0)
         else:
