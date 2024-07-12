@@ -1,6 +1,7 @@
 """Main app to control MAPIO display."""
 
 import datetime
+import hashlib
 import logging
 import os
 import random
@@ -430,6 +431,7 @@ def refresh_screen_task() -> None:
     next_refresh_time = round(time.time())
     force_refresh = False
     mapio_ctrl.logger.info("Start refresh screen task")
+    prev_hash = 0
 
     while True:
         if (next_refresh_time + SCREEN_REFRESH_PERIOD_S < round(time.time())) or (
@@ -437,9 +439,19 @@ def refresh_screen_task() -> None:
         ):
             next_refresh_time = round(time.time())
             force_refresh = False
-            mapio_ctrl.logger.info("Refresh the screen")
             mapio_ctrl.epd.init()
-            mapio_ctrl.epd.display(mapio_ctrl.get_current_buffered_image())
+
+            image_array = mapio_ctrl.get_current_buffered_image()
+            hash_function = hashlib.sha256()
+            hash_function.update(image_array)
+            new_hash = hash_function.hexdigest()
+            mapio_ctrl.logger.info(f"Image hash is {new_hash}")
+            if new_hash != prev_hash:
+                mapio_ctrl.logger.info("Refresh the screen")
+                prev_hash = new_hash
+                mapio_ctrl.epd.display(image_array)
+            else:
+                mapio_ctrl.logger.info("No need to refresh")
 
         elif mapio_ctrl.need_refresh:
             mapio_ctrl.logger.info("Short refresh of  the screen")
