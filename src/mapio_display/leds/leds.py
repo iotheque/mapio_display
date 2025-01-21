@@ -1,7 +1,8 @@
 """MAPIO leds controls."""
 
-import logging
 from pathlib import Path
+
+from loguru import logger
 
 
 class LED:
@@ -14,15 +15,13 @@ class LED:
             number (int): led number
             color (str): led color
         """
-        self.logger = logging.getLogger(__name__)
         color = color.upper()
         self.number = number
-        self.is_blinking = False
 
         if number in [1, 2, 3] and color in ["G", "R", "B"]:
             self.led_path = "/sys/class/leds/LED" + str(number) + "_" + color
         else:
-            self.logger.warning("Wrong led parameters")
+            logger.warning("Wrong led parameters")
 
     def on(self) -> None:
         """Set a led to ON."""
@@ -30,37 +29,32 @@ class LED:
             with Path.open(Path(f"{self.led_path}/brightness"), "w") as brightness:
                 brightness.write("1")
         except OSError:
-            self.logger.warning("Unknown led")
+            logger.warning("Unknown led")
 
     def off(self) -> None:
         """Set a led to OFF."""
         try:
             with Path.open(Path(f"{self.led_path}/brightness"), "w") as brightness:
                 brightness.write("0")
-                self.is_blinking = False
         except OSError:
-            self.logger.warning("Unknown led")
+            logger.warning("Unknown led")
 
-    def blink(self) -> bool:
-        """Make a led blinking.
-
-        Returns:
-            bool: True if the led has started to blink
-        """
+    def blink(self, start: bool) -> None:
+        """Make a led blinking."""
         try:
-            # Test if LED is already blinking
-            with Path.open(Path(f"{self.led_path}/trigger")) as trigger:
-                if "[timer]" in trigger.read():
-                    # Nothing to do
-                    return False
             with Path.open(Path(f"{self.led_path}/trigger"), "w") as trigger:
-                trigger.write("timer")
-                self.is_blinking = True
-                return True
+                if start:
+                    trigger.write("timer")
+                else:
+                    trigger.write("none")
+            if start:
+                with Path.open(Path(f"{self.led_path}/delay_on"), "w") as timer_on:
+                    timer_on.write("100")
+                with Path.open(Path(f"{self.led_path}/delay_off"), "w") as timer_off:
+                    timer_off.write("100")
 
         except OSError:
-            self.logger.warning("Unknown led")
-            return False
+            logger.warning("Unknown led")
 
     def reset(self, number: int) -> None:
         """Reset all color for a specific led."""
@@ -72,6 +66,5 @@ class LED:
                 path = "/sys/class/leds/LED" + str(number) + "_" + color + "/trigger"
                 with Path.open(Path(path), "w") as led:
                     led.write("none")
-                    self.is_blinking = False
         except OSError:
-            self.logger.warning("Unknown led")
+            logger.warning("Unknown led")

@@ -1,12 +1,12 @@
 """MAPIO epaper control."""
 
 #!/usr/bin/python
-import logging
 import time
 from typing import Any
 
 import gpiod  # type: ignore
 import spidev  # type: ignore
+from loguru import logger
 from PIL import Image  # type: ignore
 
 # Display resolution
@@ -33,7 +33,6 @@ class EPD:
 
     def __init__(self) -> None:
         """Initialise epaper."""
-        self.logger = logging.getLogger(__name__)
         self.width = EPD_WIDTH
         self.height = EPD_HEIGHT
         self.spi: Any = spidev.SpiDev()  # type: ignore
@@ -52,6 +51,8 @@ class EPD:
         config.request_type = gpiod.line_request.DIRECTION_INPUT
         self.busy_gpio = chip.get_line(BUSY_PIN)
         self.busy_gpio.request(config)
+        self.is_busy = False
+        logger.info("EPD initialized")
 
     def spi_transfer(self, data: Any) -> None:
         """Write bytes on SPI bus.
@@ -66,7 +67,7 @@ class EPD:
         self.reset_gpio.set_value(1)
         epd_delay_ms(20)
         self.reset_gpio.set_value(0)
-        epd_delay_ms(2)
+        epd_delay_ms(10)
         self.reset_gpio.set_value(1)
         epd_delay_ms(20)
 
@@ -98,31 +99,24 @@ class EPD:
         self.dc_gpio.set_value(1)
         self.spi_transfer(data)
 
-    def wait_busy(self) -> None:
+    def wait_busy(self) -> bool:
         """Wait EPD ready state."""
-        self.logger.debug("e-Paper busy")
         start_time = time.time()
-        while self.busy_gpio.get_value() == 1:  # 0: idle, 1: busy
-            if time.time() - start_time > 2:
-                self.logger.error("Timeout occurred while waiting for e-Paper to become ready")
-                return
-            epd_delay_ms(10)
-        self.logger.debug("e-Paper busy release")
-        return
 
-    def turn_on_display(self) -> None:
+        while self.busy_gpio.get_value() == 1:  # 0: idle, 1: busy
+            if time.time() - start_time > 6:
+                logger.error("Timeout occurred while waiting for e-Paper to become ready")
+                return False
+            epd_delay_ms(10)
+        self.is_busy = False
+        return True
+
+    def turn_on_display(self) -> bool:
         """Turn ON EPD."""
         self.send_command(0x22)  # Display Update Control
         self.send_data(0xF7)
         self.send_command(0x20)  # Activate Display Update Sequence
-        self.wait_busy()
-
-    def turn_on_display_part(self) -> None:
-        """Turn ON EPD."""
-        self.send_command(0x22)  # Display Update Control
-        self.send_data(0xFF)  # fast:0x0c, quality:0x0f, 0xcf
-        self.send_command(0x20)  # Activate Display Update Sequence
-        self.wait_busy()
+        return self.wait_busy()
 
     def set_window(self, x_start: int, y_start: int, x_end: int, y_end: int) -> None:
         """Setting the display window.
@@ -166,27 +160,26 @@ class EPD:
 
         self.wait_busy()
         self.send_command(0x12)  # SWRESET
-        self.wait_busy()
+        epd_delay_ms(10)
 
         self.send_command(0x01)  # Driver output control
         self.send_data(0xF9)
         self.send_data(0x00)
         self.send_data(0x00)
 
-        self.send_command(0x11)  # data entry mode
+        self.send_command(0x11)  # data entry mode Source from S8 to S167
         self.send_data(0x03)
 
         self.set_window(0, 0, self.width - 1, self.height - 1)
-        self.SetCursor(0, 0)
 
         self.send_command(0x3C)
         self.send_data(0x05)
 
-        self.send_command(0x21)  # Display update control
-        self.send_data(0x00)
+        self.send_command(0x18)
         self.send_data(0x80)
 
-        self.send_command(0x18)
+        self.send_command(0x21)  # Normal RAM,
+        self.send_data(0x00)
         self.send_data(0x80)
 
         self.wait_busy()
@@ -204,14 +197,14 @@ class EPD:
         img = image.rotate(180)
 
         imwidth, imheight = img.size
-        self.logger.debug(f"imwidth {imwidth}, imheight {imheight}")
+        logger.debug(f"imwidth {imwidth}, imheight {imheight}")
         if imwidth == self.width and imheight == self.height:
             img = img.convert("1")
         elif imwidth == self.height and imheight == self.width:
             # image has correct dimensions, but needs to be rotated
             img = img.rotate(90, expand=True).convert("1")
         else:
-            self.logger.warning(
+            logger.warning(
                 "Wrong image dimensions: must be " + str(self.width) + "x" + str(self.height)
             )
             # return a blank buffer
@@ -219,7 +212,7 @@ class EPD:
 
         return bytearray(img.tobytes())  # type: ignore
 
-    def display(self, image: bytearray) -> None:
+    def display(self, image: bytearray) -> bool:
         """Send and display the data on the screen.
 
         Args:
@@ -227,35 +220,9 @@ class EPD:
         """
         self.send_command(0x24)
         self.send_data2(image)
-        self.turn_on_display()
-
-    def display_partial(self, image: bytearray) -> None:
-        """Send the data on the screen and execute a partial refresh.
-
-        Args:
-            image (bytearray): Data to send to screen
-        """
-        self.reset_gpio.set_value(0)
-        epd_delay_ms(1)
-        self.reset_gpio.set_value(1)
-
-        self.send_command(0x3C)  # BorderWavefrom
-        self.send_data(0x80)
-
-        self.send_command(0x01)  # Driver output control
-        self.send_data(0xF9)
-        self.send_data(0x00)
-        self.send_data(0x00)
-
-        self.send_command(0x11)  # data entry mode
-        self.send_data(0x03)
-
-        self.set_window(0, 0, self.width - 1, self.height - 1)
-        self.SetCursor(0, 0)
-
-        self.send_command(0x24)  # WRITE_RAM
-        self.send_data2(image)
-        self.turn_on_display_part()
+        is_ok = self.turn_on_display()
+        self.enter_deep_sleep()
+        return is_ok
 
     def displayPartBaseImage(self, image: Image.Image) -> None:
         """Refresh a base image.
@@ -288,9 +255,3 @@ class EPD:
     def enter_deep_sleep(self) -> None:
         """Set display in deep sleep mode."""
         self.send_command(0x10)  # enter deep sleep
-        self.send_data(0x01)
-        epd_delay_ms(2000)
-
-        self.reset_gpio.release()
-        self.dc_gpio.release()
-        self.busy_gpio.release()

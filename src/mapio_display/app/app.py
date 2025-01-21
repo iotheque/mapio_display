@@ -2,7 +2,6 @@
 
 import datetime
 import hashlib
-import logging
 import os
 import random
 import string
@@ -19,6 +18,7 @@ import netifaces as ni  # type: ignore
 import psutil  # type: ignore
 import qrcode
 from gpiod import chip, line_request  # type: ignore
+from loguru import logger
 from netifaces import AF_INET  # type: ignore
 from PIL import Image, ImageDraw, ImageFont  # type: ignore
 
@@ -41,8 +41,6 @@ class MAPIO_CTRL:
 
     def __init__(self) -> None:
         """Initialize MAPIO control object."""
-        self.logger = logging.getLogger(__name__)
-
         # ePaper control
         self.epd = EPD()
         self.views_list = ["HOME", "STATUS", "SETUP", "SYSTEM"]
@@ -79,13 +77,12 @@ class MAPIO_CTRL:
         ]
         for led in self.all_leds:
             led.off()
-            led.logger = self.logger
 
         # Access point
         self.wifi_passwd = ""  # nosec
 
     # ePaper methods
-    def get_current_buffered_image(self, wait: bool = False) -> Any:
+    def get_current_buffered_image(self) -> Any:
         """Get current image as buffered.
 
         Args:
@@ -95,41 +92,35 @@ class MAPIO_CTRL:
             Any: The buffered image
         """
         if self.current_view == "HOME":
-            self.logger.info("HOME VIEW")
-            image = self._generate_home_view(wait)
+            logger.info("HOME VIEW")
+            image = self._generate_home_view()
         elif self.current_view == "SYSTEM":
-            image = self._generate_system_view(wait)
+            image = self._generate_system_view()
         elif self.current_view == "STATUS":
-            image = self._generate_status_view(wait)
+            image = self._generate_status_view()
         elif self.current_view == "SETUP":
-            image = self._generate_setup_view(wait)
+            image = self._generate_setup_view()
         elif self.current_view == "CUSTOM":
-            image = self._generate_custom_view(wait)
+            image = self._generate_custom_view()
 
         return self.epd.getbuffer(image)  # type: ignore
 
-    def _generate_custom_view(self, wait: bool) -> Image.Image:
+    def _generate_custom_view(self) -> Image.Image:
         """Generate the custom view as an image.
-
-        Args:
-            wait (bool): Indicates if wait message is printed
 
         Returns:
             Image: The custom view
         """
-        image = Image.new("1", (self.epd.height, self.epd.width), 255)  # 255: clear the frame
+        image = Image.new("1", (self.epd.height, self.epd.width), 255)  # 255: clear the fmapio_ctre
         if Path.exists(Path("/usr/local/homeassistant/media/epaper.jpg")):
             img = Image.open("/usr/local/homeassistant/media/epaper.jpg")
-            self.logger.info("Returns custom image")
+            logger.info("Returns custom image")
             image.paste(img, (0, 0))
             return image
         return image
 
-    def _generate_home_view(self, wait: bool) -> Image.Image:
+    def _generate_home_view(self) -> Image.Image:
         """Generate the home view as an image.
-
-        Args:
-            wait (bool): Indicates if wait message is printed
 
         Returns:
             Image: The home image
@@ -143,9 +134,6 @@ class MAPIO_CTRL:
         draw: Any = ImageDraw.Draw(image)
         clock = datetime.datetime.now().strftime("%H:%M")  # noqa
         draw.text((120, 2), clock, 0, font=self.font40)
-
-        # Wait rectangle
-        self._draw_wait_rectangle(wait, draw)
 
         # Add version
         try:
@@ -169,11 +157,8 @@ class MAPIO_CTRL:
 
         return image
 
-    def _generate_system_view(self, wait: bool) -> Image.Image:
+    def _generate_system_view(self) -> Image.Image:
         """Generate the system view as an image.
-
-        Args:
-            wait (bool): Indicates if wait message is printed
 
         Returns:
             Image: The system image
@@ -184,7 +169,7 @@ class MAPIO_CTRL:
 
         draw.text((0, 30), f"•CPU: {psutil.cpu_percent()}%", font=self.font15, fill=0)
         draw.text(
-            (120, 30),
+            (115, 30),
             f"•RAM: {psutil.virtual_memory().percent}%",
             font=self.font15,
             fill=0,
@@ -197,7 +182,7 @@ class MAPIO_CTRL:
             fill=0,
         )
         uptime = os.popen("uptime | awk -F ',' '{print $1}' | cut -c14-").read()  # noqa
-        draw.text((120, 50), f"•Uptime: {uptime}", font=self.font15, fill=0)
+        draw.text((115, 50), f"•Uptime: {uptime}", font=self.font15, fill=0)
 
         battery_volt, _ = self._get_battery_voltage()
         draw.text((0, 70), f"•Battery: {battery_volt}V", font=self.font15, fill=0)
@@ -209,16 +194,10 @@ class MAPIO_CTRL:
             fill=0,
         )
 
-        # Wait rectangle
-        self._draw_wait_rectangle(wait, draw)
-
         return image
 
-    def _generate_status_view(self, wait: bool) -> Image.Image:
+    def _generate_status_view(self) -> Image.Image:
         """Generate the status view as an image.
-
-        Args:
-            wait (bool): Indicates if wait message is printed
 
         Returns:
             Image: The status image
@@ -245,16 +224,10 @@ class MAPIO_CTRL:
         else:
             draw.text((0, 10), f"CRITICAL BATTERY level: {percent}%", font=self.font15, fill=0)
 
-        # Wait rectangle
-        self._draw_wait_rectangle(wait, draw)
-
         return image
 
-    def _generate_setup_view(self, wait: bool) -> Image.Image:
+    def _generate_setup_view(self) -> Image.Image:
         """Generate the status view as an image.
-
-        Args:
-            wait (bool): Indicates if wait message is printed
 
         Returns:
             Image: The status image
@@ -305,6 +278,11 @@ class MAPIO_CTRL:
                 os.system("systemctl stop mapio-webserver-back")  # noqa
                 os.system("systemctl stop nginx")  # noqa
                 os.system("systemctl stop wpa_supplicant-ap")  # noqa
+                #  Update the image
+                image = Image.new("1", (self.epd.height, self.epd.width), 255)
+                draw: Any = ImageDraw.Draw(image)
+                draw.text((30, 10), "Webserver is not running", font=self.font12, fill=0)
+                draw.text((30, 80), "Press MID to enable it", font=self.font12, fill=0)
 
         else:
             draw.text((30, 10), "Webserver is not running", font=self.font12, fill=0)
@@ -314,22 +292,13 @@ class MAPIO_CTRL:
                 self.mid_press = False
                 os.system("systemctl start mapio-webserver-back")  # noqa
                 os.system("systemctl start nginx")  # noqa
-
-        # Wait rectangle
-        self._draw_wait_rectangle(wait, draw)
+                image = Image.new("1", (self.epd.height, self.epd.width), 255)
+                draw: Any = ImageDraw.Draw(image)
+                draw.text((30, 10), "Webserver is starting", font=self.font12, fill=0)
+                draw.text((30, 80), "Please wait ...", font=self.font12, fill=0)
+                mapio_ctrl.need_refresh = True
 
         return image
-
-    def _draw_wait_rectangle(self, wait: bool, draw: Any):
-        """Draw wait rectangle on an image.
-
-        Args:
-            wait (bool): Boolean to indicate if the rectangle is filled
-            draw (ImageDraw): The image to modify
-        """
-        draw.rectangle((192, 96, 247, 121), fill=255, outline="black")
-        if wait:
-            draw.text((196, 100), "Wait...", font=self.font12, fill=0)
 
     def _send_ping_command(self) -> bool:
         """Send a ping command to test internet connection.
@@ -350,9 +319,9 @@ class MAPIO_CTRL:
         nothing.
         """
         if os.system("systemctl is-active wpa_supplicant-ap") == 0:  # noqa
-            self.logger.debug("Access point WIFI is already active")
+            logger.debug("Access point WIFI is already active")
         else:
-            self.logger.info("Enable WIFI access point")
+            logger.info("Enable WIFI access point")
             # Generate a random wifi password
             self.wifi_passwd = "".join(
                 random.choice(string.ascii_lowercase) for _ in range(8)  # noqa
@@ -417,80 +386,72 @@ class MAPIO_CTRL:
 mapio_ctrl = MAPIO_CTRL()
 
 
-def set_logger_for_tasks(logger: logging.Logger) -> None:
-    """Set the logger used by MAPIO control object.
-
-    Args:
-        logger (logging.Logger): Logger object
-    """
-    mapio_ctrl.logger = logger
-
-
 def refresh_screen_task() -> None:
     """Task that refresh the epaper screen."""
     next_refresh_time = round(time.time())
-    force_refresh = False
-    mapio_ctrl.logger.info("Start refresh screen task")
+    logger.info("Start refresh screen task")
     prev_hash = 0
 
     while True:
         if (next_refresh_time + SCREEN_REFRESH_PERIOD_S < round(time.time())) or (
-            force_refresh is True
+            mapio_ctrl.need_refresh is True
         ):
-            next_refresh_time = round(time.time())
-            force_refresh = False
             mapio_ctrl.epd.init()
-
+            mapio_ctrl.epd.is_busy = True
+            next_refresh_time = round(time.time())
+            mapio_ctrl.need_refresh = False
+            # Update view for next refresh
+            mapio_ctrl.current_view = mapio_ctrl.views_pool[0]
             image_array = mapio_ctrl.get_current_buffered_image()
             hash_function = hashlib.sha256()
             hash_function.update(image_array)
             new_hash = hash_function.hexdigest()
-            mapio_ctrl.logger.info(f"Image hash is {new_hash}")
+            logger.info(f"Image hash is {new_hash}")
             if new_hash != prev_hash:
-                mapio_ctrl.logger.info("Refresh the screen")
+                logger.info("Refresh the screen")
+                mapio_ctrl.led_sys_green.blink(True)
                 prev_hash = new_hash
-                mapio_ctrl.epd.display(image_array)
+                if mapio_ctrl.epd.display(image_array) is False:
+                    mapio_ctrl.need_refresh = True
+                    prev_hash = 0
             else:
-                mapio_ctrl.logger.info("No need to refresh")
-
-        elif mapio_ctrl.need_refresh:
-            mapio_ctrl.logger.info("Short refresh of  the screen")
-            mapio_ctrl.need_refresh = False
-            force_refresh = True
-            mapio_ctrl.epd.display_partial(mapio_ctrl.get_current_buffered_image(wait=True))
-            # Update view for next refresh
-            mapio_ctrl.current_view = mapio_ctrl.views_pool[0]
+                mapio_ctrl.epd.is_busy = False
+                logger.info("No need to refresh")
 
         time.sleep(0.5)
 
 
 def refresh_leds_task() -> None:
     """Task that refresh the leds."""
-    mapio_ctrl.logger.info("Start refresh leds task")
+    logger.info("Start refresh leds task")
 
     while True:
         # LED1 management
         # Check if docker service is running
-        if os.system("systemctl is-active --quiet docker.service") == 0:  # noqa
+        if mapio_ctrl.epd.is_busy:
+            pass
+        elif os.system("systemctl is-active --quiet docker.service") == 0:  # noqa
+            mapio_ctrl.led_sys_green.blink(False)
             mapio_ctrl.led_sys_green.on()
             mapio_ctrl.led_sys_red.off()
         else:
+            mapio_ctrl.led_sys_green.blink(False)
             mapio_ctrl.led_sys_green.on()
             mapio_ctrl.led_sys_red.on()
 
         # LED3 management
         if mapio_ctrl.get_battery_state() == BatteryState.powered:
-            mapio_ctrl.logger.debug("Powered")
+            logger.debug("Powered")
             mapio_ctrl.led_chg_red.off()
             mapio_ctrl.led_chg_green.on()
         elif mapio_ctrl.get_battery_state() == BatteryState.on_battery:
-            mapio_ctrl.logger.debug("On Battery")
+            logger.debug("On Battery")
             mapio_ctrl.led_chg_green.off()
             mapio_ctrl.led_chg_red.off()
             mapio_ctrl.led_chg_green.on()
             mapio_ctrl.led_chg_red.on()
         elif mapio_ctrl.get_battery_state() == BatteryState.critical:
-            mapio_ctrl.logger.debug("Crititcal Battery")
+            logger.debug("Crititcal Battery")
             mapio_ctrl.led_chg_red.on()
             mapio_ctrl.led_chg_green.off()
         time.sleep(1)
@@ -502,33 +463,55 @@ def _gpio_chip_handler(buttons: Any) -> None:
     Args:
         buttons (Any): List of GPIO that trigs the interrupt
     """
+    last_event_time = time.time()
     while True:
         lines = buttons.event_wait(datetime.timedelta(seconds=10))
         if not lines.empty:
             for it in lines:
                 event = it.event_read()
-                mapio_ctrl.logger.debug(f"Event: {event}")
-                mapio_ctrl.logger.info(it.consumer)
-                if it.consumer == "UP":
-                    mapio_ctrl.need_refresh = True
-                    mapio_ctrl.views_pool.rotate(-1)
-                    mapio_ctrl.logger.info(f"next view is: {mapio_ctrl.views_pool[0]}")
-                elif it.consumer == "DOWN":
-                    mapio_ctrl.need_refresh = True
-                    mapio_ctrl.views_pool.rotate(1)
-                    mapio_ctrl.logger.info(f"next view is: {mapio_ctrl.views_pool[0]}")
-                elif it.consumer == "MID":
-                    mapio_ctrl.logger.info("MID has been pushed")
-                    mapio_ctrl.need_refresh = True
-                    mapio_ctrl.mid_press = True
+                current_time = time.time()
+                if current_time - last_event_time > 3:
+                    last_event_time = current_time
+                    logger.debug(f"Event: {event}")
+                    if mapio_ctrl.epd.is_busy:
+                        logger.info("ePaper is busy, ignore button event")
+                    elif it.consumer == "UP":
+                        mapio_ctrl.need_refresh = True
+                        mapio_ctrl.views_pool.rotate(-1)
+                        mapio_ctrl.led_sys_green.blink(True)
+                        logger.info(f"next view is: {mapio_ctrl.views_pool[0]}")
+                    elif it.consumer == "DOWN":
+                        mapio_ctrl.need_refresh = True
+                        mapio_ctrl.views_pool.rotate(1)
+                        mapio_ctrl.led_sys_green.blink(True)
+                        logger.info(f"next view is: {mapio_ctrl.views_pool[0]}")
+                    elif it.consumer == "MID":
+                        logger.info("MID has been pushed")
+                        long_pressed = True
+                        for _ in range(30):
+                            if it.get_value() != 0:
+                                long_pressed = False
+                                break
+                            time.sleep(0.1)
+                        if long_pressed:
+                            logger.info("Long pressed detected, ask for reboot")
+                            mapio_ctrl.led_sys_green.off()
+                            mapio_ctrl.led_sys_red.on()
+                            os.system("reboot")  # noqa
+
+                        mapio_ctrl.need_refresh = True
+                        mapio_ctrl.mid_press = True
+                        mapio_ctrl.led_sys_green.blink(True)
+                    else:
+                        logger.error("Unknown button")
                 else:
-                    mapio_ctrl.logger.error("Unknown button")
+                    logger.info("Debounce : ignore button event")
         time.sleep(1)
 
 
 def gpio_mon_create_task() -> None:
     """Task that manages the GPIO buttons."""
-    mapio_ctrl.logger.info("Create GPIOs task")
+    logger.info("Create GPIOs task")
     # Button mid on chip 0
     config = line_request()
     config.request_type = line_request.EVENT_FALLING_EDGE
