@@ -39,7 +39,7 @@ class EPD:
         self.spi.open(0, 0)
         self.spi.max_speed_hz = 4000000
 
-        chip = gpiod.chip(1)
+        chip = gpiod.chip(2)
         config = gpiod.line_request()
         config.request_type = gpiod.line_request.DIRECTION_OUTPUT
 

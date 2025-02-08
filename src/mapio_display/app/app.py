@@ -367,7 +367,7 @@ class MAPIO_CTRL:
     def get_battery_state(self) -> BatteryState:
         """Return the current battery state."""
         state: BatteryState
-        chg_boost_n = os.popen("gpioget 1 10").read().strip()  # noqa
+        chg_boost_n = os.popen("gpioget --numeric -c 2 10").read().strip()  # noqa
 
         if chg_boost_n == "0":
             state = BatteryState.on_battery
@@ -527,7 +527,7 @@ def gpio_mon_create_task() -> None:
     # Button up and down on chip 1
     config = line_request()
     config.request_type = line_request.EVENT_FALLING_EDGE
-    chip1 = chip(1)
+    chip1 = chip(2)
     BUTTON_UP_DOWN_LINE_OFFSETS = [0, 1]
     buttons_up_down = chip1.get_lines(BUTTON_UP_DOWN_LINE_OFFSETS)
     for i in range(buttons_up_down.size):
