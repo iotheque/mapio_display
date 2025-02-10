@@ -139,7 +139,7 @@ class MAPIO_CTRL:
         try:
             image_editable: Any = ImageDraw.Draw(image)
             os_version = os.popen(
-                "cat /etc/os-release | grep PRETTY_NAME | awk '{print $4}'"  # noqa
+                "cat /etc/os-release | grep MAPIO_OS_VERSION= | awk -F '=' '{print $2}'"  # noqa
             ).read()
         except:  # noqa: E722
             os_version = "None"
