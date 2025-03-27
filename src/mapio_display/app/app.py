@@ -25,7 +25,8 @@ from PIL import Image, ImageDraw, ImageFont  # type: ignore
 from mapio_display.epd.epd import EPD
 from mapio_display.leds.leds import LED
 
-SCREEN_REFRESH_PERIOD_S = 60
+SCREEN_REFRESH_PERIOD_S = 0
+counter = 1
 
 
 class BatteryState(Enum):
@@ -143,8 +144,11 @@ class MAPIO_CTRL:
             ).read()
         except:  # noqa: E722
             os_version = "None"
+
+        global counter
+        counter = counter + 1
         image_editable.text((120, 90), "MAPIO OS: ", 0, font=self.font12)  # type: ignore
-        image_editable.text((120, 105), os_version, 0, font=self.font12)  # type: ignore
+        image_editable.text((120, 105), str(counter), 0, font=self.font12)  # type: ignore
 
         # Add IP address
         try:
@@ -411,6 +415,7 @@ def refresh_screen_task() -> None:
                 logger.info("Refresh the screen")
                 mapio_ctrl.led_sys_green.blink(True)
                 prev_hash = new_hash
+                prev_hash = 0
                 if mapio_ctrl.epd.display(image_array) is False:
                     mapio_ctrl.need_refresh = True
                     prev_hash = 0
