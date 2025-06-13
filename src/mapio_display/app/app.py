@@ -218,11 +218,22 @@ class MAPIO_CTRL:
 
         _, percent = self._get_battery_voltage()
         if self.get_battery_state() == BatteryState.powered:
-            draw.text((0, 10), f"POWERED level: {percent}%", font=self.font15, fill=0)
+            draw.text((0, 10), "POWERED: ", font=self.font15, fill=0)
+            offset = 100
         elif self.get_battery_state() == BatteryState.on_battery:
-            draw.text((0, 10), f"ON BATTERY level: {percent}%", font=self.font15, fill=0)
+            draw.text((0, 10), "ON BATTERY: ", font=self.font15, fill=0)
+            offset = 120
         else:
-            draw.text((0, 10), f"CRITICAL BATTERY level: {percent}%", font=self.font15, fill=0)
+            draw.text((0, 10), "CRITICAL BATTERY: ", font=self.font15, fill=0)
+            offset = 160
+
+        draw.text((offset, 5), "□□□", font=self.font28, fill=0)
+        if percent == 100:
+            draw.text((offset, 5), "■■■", font=self.font28, fill=0)
+        elif percent == 50:
+            draw.text((offset, 5), "■■□", font=self.font28, fill=0)
+        elif percent == 25:
+            draw.text((offset, 5), "■□□", font=self.font28, fill=0)
 
         return image
 
@@ -353,11 +364,9 @@ class MAPIO_CTRL:
             battery_volt_float = 4 * int(battery_volt, 16) / 100
 
         percent = 0
-        if battery_volt_float > 4:
+        if battery_volt_float > 3.75:
             percent = 100
-        elif battery_volt_float > 3.75:
-            percent = 75
-        elif battery_volt_float > 3.5:
+        elif battery_volt_float > 3.4:
             percent = 50
         elif battery_volt_float > 3.25:
             percent = 25
