@@ -56,6 +56,7 @@ class MAPIO_CTRL:
         font_path = "/usr/share/fonts/ttf/LiberationMono-Bold.ttf"
         self.font12 = ImageFont.truetype(font_path, 12)
         self.font15 = ImageFont.truetype(font_path, 15)
+        self.font19 = ImageFont.truetype(font_path, 19)
         self.font28 = ImageFont.truetype(font_path, 28)
         self.font40 = ImageFont.truetype(font_path, 40)
 
@@ -135,6 +136,10 @@ class MAPIO_CTRL:
         clock = datetime.datetime.now().strftime("%H:%M")  # noqa
         draw.text((120, 2), clock, 0, font=self.font40)
 
+        date = datetime.date.today()  # noqa
+        date_formatee = date.strftime("%a %d/%m")
+        draw.text((120, 40), date_formatee, 0, font=self.font19)
+
         # Add version
         try:
             image_editable: Any = ImageDraw.Draw(image)
@@ -143,8 +148,7 @@ class MAPIO_CTRL:
             ).read()
         except:  # noqa: E722
             os_version = "None"
-        image_editable.text((120, 90), "MAPIO OS: ", 0, font=self.font12)  # type: ignore
-        image_editable.text((120, 105), os_version, 0, font=self.font12)  # type: ignore
+        image_editable.text((120, 105), f"MAPIO OS: {os_version}", 0, font=self.font12)  # type: ignore
 
         # Add IP address
         try:
@@ -153,7 +157,7 @@ class MAPIO_CTRL:
             ip_addr = ni.ifaddresses(def_gw_device)[AF_INET][0]["addr"]  # type: ignore
         except:  # noqa: E722
             ip_addr = "NO IP"
-        image_editable.text((120, 70), ip_addr, 0, font=self.font12)  # type: ignore
+        image_editable.text((120, 90), ip_addr, 0, font=self.font12)  # type: ignore
 
         return image
 
